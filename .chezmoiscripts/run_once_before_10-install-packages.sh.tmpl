@@ -136,6 +136,19 @@ install_brew_packages() {
   fi
 }
 
+# Tailscale (always). Official installer registers the tailscaled systemd
+# service; needs root + touches the rootfs, so it runs in the unlocked window.
+install_tailscale() {
+  [ "$OS" = "Linux" ] || return 0
+  if ! have_sudo; then
+    log "No sudo: skipping tailscale (run scripts/install_tailscale.sh later)."
+    return 0
+  fi
+  log "Installing tailscale (systemd service)"
+  local sdir="$HOME/.local/share/chezmoi/scripts"
+  [ -x "$sdir/install_tailscale.sh" ] && "$sdir/install_tailscale.sh" || true
+}
+
 # linuxdev extras need root (docker/microk8s touch system services).
 install_role_extras() {
   [ "$OS" != "Linux" ] && return 0
@@ -156,6 +169,7 @@ install_role_extras() {
 # its own prefix and does not need this.
 rootfs_unlock
 install_system_packages
+install_tailscale
 install_role_extras
 rootfs_relock
 
