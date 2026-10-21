@@ -1,0 +1,17 @@
+*.swk
+*.swl
+*.swm
+*.swn
+*.swo
+*.swp
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+.idea
+Icon?
+ehthumbs.db
+Thumbs.db
+node_modules
+*~

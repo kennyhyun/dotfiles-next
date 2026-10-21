@@ -1,0 +1,101 @@
+#!/usr/bin/env bash
+# Installs system packages, Homebrew, and build tools.
+# Runs once (chezmoi re-runs only if this file's contents change).
+#
+# Env flags:
+#   PRODUCTION=1   -> skip developer tooling, install essentials only
+#   DOTFILES_ROLE  -> "linuxdev" also installs docker + microk8s (Linux only)
+
+set -euo pipefail
+
+ROLE="${DOTFILES_ROLE:-base}"
+SKIP_DEVTOOLS=""
+if [ -n "${PRODUCTION:-}" ]; then SKIP_DEVTOOLS=1; fi
+
+log() { printf '\n\033[1;34m==> %s\033[0m\n' "$*"; }
+
+OS="$(uname -s)"
+
+install_linux_packages() {
+  if ! sudo -n true 2>/dev/null; then
+    echo "sudo access required. Install sudo and add your user to the sudo group, then re-run."
+    exit 2
+  fi
+
+  local distro perf_pkg
+  distro="$(grep '^ID=' /etc/os-release | cut -d= -f2 | tr -d '"')"
+  if [ "$distro" = "ubuntu" ]; then perf_pkg="linux-tools-common"; else perf_pkg="linux-perf"; fi
+
+  sudo apt-get update
+  # build-essential + headers are REQUIRED so nvim-treesitter can compile
+  # parsers (missing C headers = "fatal error: stdint.h: No such file").
+  sudo apt-get install -y \
+    build-essential \
+    "$perf_pkg" \
+    apt-transport-https \
+    ca-certificates \
+    git git-lfs \
+    htop \
+    python3-pip python3-venv pipx \
+    jq curl \
+    default-jre \
+    tmux \
+    ripgrep fd-find \
+    silversearcher-ag \
+    xclip \
+    zsh \
+    lshw net-tools psmisc
+
+  # kubectl
+  if ! command -v kubectl >/dev/null 2>&1; then
+    local arch
+    arch="$(uname -m | sed -e 's/x86_64/amd64/' -e 's/aarch64$/arm64/')"
+    curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/${arch}/kubectl"
+    sudo install -o root -g root -m 0755 kubectl /usr/local/bin/kubectl && rm -f kubectl
+  fi
+
+  if [ "$ROLE" = "linuxdev" ] && [ -z "$SKIP_DEVTOOLS" ]; then
+    log "linuxdev role: installing docker + microk8s"
+    [ -x "$HOME/.local/share/chezmoi/scripts/install_microk8s.sh" ] && "$HOME/.local/share/chezmoi/scripts/install_microk8s.sh" || true
+    [ -x "$HOME/.local/share/chezmoi/scripts/install_docker.sh" ] && "$HOME/.local/share/chezmoi/scripts/install_docker.sh" || true
+  fi
+}
+
+install_macos_packages() {
+  if ! command -v brew >/dev/null 2>&1; then
+    /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+  fi
+  # Xcode CLT provides the C toolchain + headers for treesitter.
+  xcode-select -p >/dev/null 2>&1 || xcode-select --install || true
+}
+
+ensure_brew() {
+  if ! command -v brew >/dev/null 2>&1; then
+    if [ "$OS" = "Linux" ]; then
+      log "Installing Homebrew (Linux)"
+      curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh | bash
+    fi
+  fi
+  for p in /opt/homebrew/bin/brew /usr/local/bin/brew /home/linuxbrew/.linuxbrew/bin/brew; do
+    [ -x "$p" ] && eval "$("$p" shellenv)" && break
+  done
+}
+
+install_brew_packages() {
+  log "Installing Homebrew packages"
+  brew update
+  brew install neovim ripgrep fd jq git-lfs httpie
+  if [ -z "$SKIP_DEVTOOLS" ]; then
+    brew install awscli deno opentofu graphviz
+  fi
+}
+
+case "$OS" in
+  Linux)  install_linux_packages ;;
+  Darwin) install_macos_packages ;;
+esac
+
+ensure_brew
+install_brew_packages
+
+log "Package installation complete."

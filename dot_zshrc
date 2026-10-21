@@ -1,0 +1,48 @@
+# ~/.zshrc managed by chezmoi
+# Migrated from the legacy dotfiles .zshrc with cleanups.
+
+# ---- Editor ----
+export VISUAL=nvim
+export EDITOR="$VISUAL"
+
+# ---- PATH ----
+# Prepend user bins. Guard against duplicate entries on re-source.
+typeset -U path PATH   # zsh: keep PATH entries unique automatically
+path=("$HOME/bin" "$HOME/.local/bin" $path)
+
+# ---- Homebrew ----
+# Initialize brew once. typeset -U above prevents PATH duplication even if
+# this runs again in a subshell.
+if [ -z "$HOMEBREW_PREFIX" ]; then
+  if [ -x /opt/homebrew/bin/brew ]; then
+    eval "$(/opt/homebrew/bin/brew shellenv)"
+  elif [ -x /usr/local/bin/brew ]; then
+    eval "$(/usr/local/bin/brew shellenv)"
+  elif [ -x /home/linuxbrew/.linuxbrew/bin/brew ]; then
+    eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"
+  fi
+fi
+
+# ---- Aliases (from legacy config) ----
+# Docker
+alias d="docker"
+alias dc="docker compose"
+alias dp="docker ps --format '{{.Names}}\t{{.Ports}}\t{{.Status}}\t{{.Image}}'"
+
+# Kubernetes
+alias kc="kubectl"
+
+# grep that skips noisy dirs
+alias gwgrep='grep --color=auto --exclude-dir=.git --exclude-dir=node_modules --exclude-dir=docker_node_modules_cache'
+alias gg="gwgrep"
+
+# ---- NVM ----
+export NVM_DIR="$HOME/.nvm"
+[ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
+[ -s "$NVM_DIR/bash_completion" ] && \. "$NVM_DIR/bash_completion"
+
+# ---- fzf ----
+# Key bindings and fuzzy completion (installed by brew; file sourced if present)
+if command -v fzf >/dev/null 2>&1; then
+  source <(fzf --zsh) 2>/dev/null || true
+fi

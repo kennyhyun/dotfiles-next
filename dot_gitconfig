@@ -1,0 +1,26 @@
+[alias]
+  dw = diff -w
+  co = checkout
+  ci = commit
+  st = status
+  br = branch
+  hist = log --pretty=format:\"%C(auto)%h %C(cyan)%ad %Creset%s%C(auto)%d %C(yellow)[%an]\" --graph --date=short
+  type = cat-file -t
+  dump = cat-file -p
+  cp = cherry-pick
+
+  tree = hist
+  # fetch rebase origin master
+  from = pull --rebase origin main
+  # fetch rebase origin develop
+  frod = pull --rebase origin develop
+  # check out to the latest main
+  colm = "!f() { git co main && git pull origin main; }; f"
+  # check out to the latest develop
+  cold = "!f() { git co develop && git pull origin develop; }; f"
+
+[core]
+  autocrlf = input
+
+[oh-my-zsh]
+  hide-dirty = 1

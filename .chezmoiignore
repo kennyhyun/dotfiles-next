@@ -1,0 +1,5 @@
+# Files in the source dir that should NOT be applied to the home directory.
+README.md
+readme.md
+LICENSE
+scripts/**

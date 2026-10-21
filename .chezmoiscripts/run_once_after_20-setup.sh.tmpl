@@ -1,0 +1,92 @@
+#!/usr/bin/env bash
+# Post-apply setup: Node (nvm), tmux plugin manager, SSH keys, git identity,
+# and Neovim plugin sync. Runs once (re-runs if contents change).
+
+set -euo pipefail
+
+log() { printf '\n\033[1;34m==> %s\033[0m\n' "$*"; }
+
+# ---- Homebrew into PATH for this script ----
+for p in /opt/homebrew/bin/brew /usr/local/bin/brew /home/linuxbrew/.linuxbrew/bin/brew; do
+  [ -x "$p" ] && eval "$("$p" shellenv)" && break
+done
+
+# ---- Node via nvm ----
+export NVM_DIR="$HOME/.nvm"
+if [ ! -s "$NVM_DIR/nvm.sh" ]; then
+  log "Installing nvm"
+  # Use the official nvm-sh repo (legacy creationix path is deprecated).
+  latest="$(curl -fsSL https://api.github.com/repos/nvm-sh/nvm/releases/latest | jq -r .tag_name)"
+  curl -fsSL "https://raw.githubusercontent.com/nvm-sh/nvm/${latest}/install.sh" | bash
+fi
+# shellcheck disable=SC1091
+[ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
+if command -v nvm >/dev/null 2>&1; then
+  if ! nvm ls --no-colors 2>/dev/null | grep -q 'lts'; then
+    log "Installing Node LTS"
+    nvm install --lts
+    nvm alias default 'lts/*'
+  fi
+  if command -v npm >/dev/null 2>&1; then
+    npm i -g yarn prettier >/dev/null 2>&1 || true
+  fi
+fi
+
+# ---- tmux plugin manager (tpm) ----
+if [ ! -d "$HOME/.tmux/plugins/tpm" ]; then
+  log "Installing tmux plugin manager (tpm)"
+  mkdir -p "$HOME/.tmux/plugins"
+  git clone --depth 1 https://github.com/tmux-plugins/tpm "$HOME/.tmux/plugins/tpm"
+fi
+
+# ---- SSH keys (ed25519; security upgrade from legacy RSA-2048) ----
+mkdir -p "$HOME/.ssh" && chmod 700 "$HOME/.ssh"
+if [ ! -f "$HOME/.ssh/id_ed25519" ]; then
+  log "Generating ed25519 SSH key"
+  ssh-keygen -t ed25519 -a 100 -f "$HOME/.ssh/id_ed25519" -q -N "" -C "$USER@$(hostname)"
+fi
+# Separate bastion key (legacy copied id_rsa; we generate a distinct key so
+# the two identities are not shared).
+if [ ! -f "$HOME/.ssh/id_ed25519_bastion" ]; then
+  log "Generating separate ed25519 bastion key"
+  ssh-keygen -t ed25519 -a 100 -f "$HOME/.ssh/id_ed25519_bastion" -q -N "" -C "$USER-bastion@$(hostname)"
+fi
+
+# ---- git identity ----
+set +e
+name="$(git config --global user.name)"
+email="$(git config --global user.email)"
+set -e
+if [ -t 1 ]; then
+  [ -z "$name" ] && name="$USER"
+  printf 'git user.name [%s]: ' "$name"; read -r in_name; [ -n "$in_name" ] && name="$in_name"
+  printf 'git user.email [%s]: ' "$email"; read -r in_email; [ -n "$in_email" ] && email="$in_email"
+  git config --global user.name "$name"
+  [ -n "$email" ] && git config --global user.email "$email"
+  git config --global core.excludesfile "$HOME/.gitignore_global"
+else
+  if [ -z "$name" ] || [ -z "$email" ]; then
+    echo "Set your git identity:"
+    echo "  git config --global user.name  <Name>"
+    echo "  git config --global user.email <Email>"
+  fi
+  git config --global core.excludesfile "$HOME/.gitignore_global" || true
+fi
+
+# ---- Neovim: install/sync plugins headlessly ----
+if command -v nvim >/dev/null 2>&1; then
+  log "Syncing Neovim plugins (lazy)"
+  nvim --headless "+Lazy! sync" +qa 2>/dev/null || true
+  nvim --headless "+TSUpdateSync" +qa 2>/dev/null || true
+fi
+
+# ---- default shell ----
+if command -v zsh >/dev/null 2>&1 && [ "${SHELL:-}" != "$(command -v zsh)" ]; then
+  log "Setting default shell to zsh (may prompt for password)"
+  sudo chsh -s "$(command -v zsh)" "$USER" 2>/dev/null || chsh -s "$(command -v zsh)" 2>/dev/null || \
+    echo "Could not change shell automatically; run: chsh -s $(command -v zsh)"
+fi
+
+log "Setup complete. Public keys to register with GitHub/GitLab:"
+echo "----- id_ed25519.pub -----"; cat "$HOME/.ssh/id_ed25519.pub"
+echo "Please log out and back in to pick up the new shell/env."
