@@ -1,101 +1,112 @@
 #!/usr/bin/env bash
-# Installs system packages, Homebrew, and build tools.
-# Runs once (chezmoi re-runs only if this file's contents change).
+# Installs packages and build tools. Homebrew-first so it works without root
+# wherever possible.
 #
 # Env flags:
 #   PRODUCTION=1   -> skip developer tooling, install essentials only
-#   DOTFILES_ROLE  -> "linuxdev" also installs docker + microk8s (Linux only)
+#   DOTFILES_ROLE  -> "linuxdev" also installs docker + microk8s (needs sudo)
+#   NO_SUDO=1      -> never call sudo; skip all steps that require root
+#                     (system apt packages, kubectl to /usr/local/bin). Use on
+#                     machines where you only have your home directory.
 
 set -euo pipefail
 
 ROLE="${DOTFILES_ROLE:-base}"
 SKIP_DEVTOOLS=""
-if [ -n "${PRODUCTION:-}" ]; then SKIP_DEVTOOLS=1; fi
+[ -n "${PRODUCTION:-}" ] && SKIP_DEVTOOLS=1
 
 log() { printf '\n\033[1;34m==> %s\033[0m\n' "$*"; }
 
 OS="$(uname -s)"
 
-install_linux_packages() {
-  if ! sudo -n true 2>/dev/null; then
-    echo "sudo access required. Install sudo and add your user to the sudo group, then re-run."
-    exit 2
-  fi
+# have_sudo: true only if sudo is usable AND the user hasn't opted out.
+have_sudo() {
+  [ -z "${NO_SUDO:-}" ] && command -v sudo >/dev/null 2>&1 && sudo -n true 2>/dev/null
+}
 
+ensure_brew() {
+  for p in /opt/homebrew/bin/brew /usr/local/bin/brew /home/linuxbrew/.linuxbrew/bin/brew; do
+    [ -x "$p" ] && eval "$("$p" shellenv)" && return 0
+  done
+  log "Installing Homebrew"
+  # NOTE: On Linux, Homebrew's first-time install needs sudo to create
+  # /home/linuxbrew. If you have no root at all, pre-install brew to a path you
+  # own and re-run. (See https://docs.brew.sh/Installation for a no-sudo path.)
+  NONINTERACTIVE=1 /bin/bash -c \
+    "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+  for p in /opt/homebrew/bin/brew /usr/local/bin/brew /home/linuxbrew/.linuxbrew/bin/brew; do
+    [ -x "$p" ] && eval "$("$p" shellenv)" && return 0
+  done
+}
+
+# System packages (Linux, apt) — only when we have root. On macOS the C
+# toolchain comes from Xcode CLT; everything else comes from brew.
+install_system_packages() {
+  if [ "$OS" = "Darwin" ]; then
+    xcode-select -p >/dev/null 2>&1 || xcode-select --install || true
+    return 0
+  fi
+  if ! have_sudo; then
+    log "No sudo (or NO_SUDO set): skipping apt packages."
+    echo "  Make sure a C compiler + headers exist for treesitter, e.g.:"
+    echo "    sudo apt-get install build-essential"
+    echo "  Otherwise brew's gcc is used, which still needs system libc headers."
+    return 0
+  fi
   local distro perf_pkg
   distro="$(grep '^ID=' /etc/os-release | cut -d= -f2 | tr -d '"')"
   if [ "$distro" = "ubuntu" ]; then perf_pkg="linux-tools-common"; else perf_pkg="linux-perf"; fi
-
   sudo apt-get update
-  # build-essential + headers are REQUIRED so nvim-treesitter can compile
-  # parsers (missing C headers = "fatal error: stdint.h: No such file").
+  # build-essential provides the C compiler + libc headers treesitter needs.
   sudo apt-get install -y \
     build-essential \
     "$perf_pkg" \
-    apt-transport-https \
-    ca-certificates \
+    apt-transport-https ca-certificates \
     git git-lfs \
     htop \
     python3-pip python3-venv pipx \
     jq curl \
     default-jre \
-    tmux \
-    ripgrep fd-find \
-    silversearcher-ag \
     xclip \
-    zsh \
     lshw net-tools psmisc
-
-  # kubectl
-  if ! command -v kubectl >/dev/null 2>&1; then
-    local arch
-    arch="$(uname -m | sed -e 's/x86_64/amd64/' -e 's/aarch64$/arm64/')"
-    curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/${arch}/kubectl"
-    sudo install -o root -g root -m 0755 kubectl /usr/local/bin/kubectl && rm -f kubectl
-  fi
-
-  if [ "$ROLE" = "linuxdev" ] && [ -z "$SKIP_DEVTOOLS" ]; then
-    log "linuxdev role: installing docker + microk8s"
-    [ -x "$HOME/.local/share/chezmoi/scripts/install_microk8s.sh" ] && "$HOME/.local/share/chezmoi/scripts/install_microk8s.sh" || true
-    [ -x "$HOME/.local/share/chezmoi/scripts/install_docker.sh" ] && "$HOME/.local/share/chezmoi/scripts/install_docker.sh" || true
-  fi
 }
 
-install_macos_packages() {
-  if ! command -v brew >/dev/null 2>&1; then
-    /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
-  fi
-  # Xcode CLT provides the C toolchain + headers for treesitter.
-  xcode-select -p >/dev/null 2>&1 || xcode-select --install || true
-}
-
-ensure_brew() {
-  if ! command -v brew >/dev/null 2>&1; then
-    if [ "$OS" = "Linux" ]; then
-      log "Installing Homebrew (Linux)"
-      curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh | bash
-    fi
-  fi
-  for p in /opt/homebrew/bin/brew /usr/local/bin/brew /home/linuxbrew/.linuxbrew/bin/brew; do
-    [ -x "$p" ] && eval "$("$p" shellenv)" && break
-  done
-}
-
+# Everything else via brew (no root needed once brew exists).
 install_brew_packages() {
   log "Installing Homebrew packages"
   brew update
-  brew install neovim ripgrep fd jq git-lfs httpie
+  # Core CLI + editor + shell niceties, all user-local via brew.
+  brew install \
+    neovim \
+    tmux \
+    zsh \
+    zsh-autosuggestions \
+    zsh-syntax-highlighting \
+    fnm \
+    ripgrep fd jq git-lfs httpie fzf kubernetes-cli
   if [ -z "$SKIP_DEVTOOLS" ]; then
     brew install awscli deno opentofu graphviz
   fi
 }
 
-case "$OS" in
-  Linux)  install_linux_packages ;;
-  Darwin) install_macos_packages ;;
-esac
+# linuxdev extras need root (docker/microk8s touch system services).
+install_role_extras() {
+  [ "$OS" != "Linux" ] && return 0
+  [ "$ROLE" = "linuxdev" ] || return 0
+  [ -n "$SKIP_DEVTOOLS" ] && return 0
+  if ! have_sudo; then
+    log "linuxdev role requested but no sudo: skipping docker/microk8s."
+    return 0
+  fi
+  log "linuxdev role: installing docker + microk8s"
+  local sdir="$HOME/.local/share/chezmoi/scripts"
+  [ -x "$sdir/install_microk8s.sh" ] && "$sdir/install_microk8s.sh" || true
+  [ -x "$sdir/install_docker.sh" ] && "$sdir/install_docker.sh" || true
+}
 
+install_system_packages
 ensure_brew
 install_brew_packages
+install_role_extras
 
 log "Package installation complete."

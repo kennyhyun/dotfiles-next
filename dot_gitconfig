@@ -24,3 +24,9 @@
 
 [oh-my-zsh]
   hide-dirty = 1
+
+# Machine-specific config (NOT managed by chezmoi).
+# Put host-specific settings here: [user] identity, git-lfs filters, etc.
+# git silently ignores a missing include path, so no file is required.
+[include]
+  path = ~/.gitconfig.local

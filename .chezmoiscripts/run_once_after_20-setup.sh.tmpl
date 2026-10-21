@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Post-apply setup: Node (nvm), tmux plugin manager, SSH keys, git identity,
+# Post-apply setup: Node (fnm), tmux plugin manager, SSH keys, git identity,
 # and Neovim plugin sync. Runs once (re-runs if contents change).
 
 set -euo pipefail
@@ -11,25 +11,21 @@ for p in /opt/homebrew/bin/brew /usr/local/bin/brew /home/linuxbrew/.linuxbrew/b
   [ -x "$p" ] && eval "$("$p" shellenv)" && break
 done
 
-# ---- Node via nvm ----
-export NVM_DIR="$HOME/.nvm"
-if [ ! -s "$NVM_DIR/nvm.sh" ]; then
-  log "Installing nvm"
-  # Use the official nvm-sh repo (legacy creationix path is deprecated).
-  latest="$(curl -fsSL https://api.github.com/repos/nvm-sh/nvm/releases/latest | jq -r .tag_name)"
-  curl -fsSL "https://raw.githubusercontent.com/nvm-sh/nvm/${latest}/install.sh" | bash
-fi
-# shellcheck disable=SC1091
-[ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
-if command -v nvm >/dev/null 2>&1; then
-  if ! nvm ls --no-colors 2>/dev/null | grep -q 'lts'; then
-    log "Installing Node LTS"
-    nvm install --lts
-    nvm alias default 'lts/*'
+# ---- Node via fnm (Fast Node Manager; replaces nvm) ----
+# fnm is installed by the package script (brew). Everything lives under the
+# user's home — no root required.
+if command -v fnm >/dev/null 2>&1; then
+  eval "$(fnm env --shell bash)"
+  if ! fnm list 2>/dev/null | grep -qiE 'lts|v[0-9]'; then
+    log "Installing Node LTS via fnm"
+    fnm install --lts
+    fnm default "$(fnm list 2>/dev/null | grep -oE 'v[0-9]+\.[0-9]+\.[0-9]+' | tail -1)" 2>/dev/null || true
   fi
   if command -v npm >/dev/null 2>&1; then
     npm i -g yarn prettier >/dev/null 2>&1 || true
   fi
+else
+  echo "fnm not found; skipping Node install. Install fnm then run: fnm install --lts"
 fi
 
 # ---- tmux plugin manager (tpm) ----
@@ -53,24 +49,30 @@ if [ ! -f "$HOME/.ssh/id_ed25519_bastion" ]; then
 fi
 
 # ---- git identity ----
+# ---- Machine-specific config files (NOT managed by chezmoi) ----
+# Ensure they exist so the managed ~/.zshrc source and ~/.gitconfig include
+# never error. Host-specific settings live here and survive re-apply.
+[ -f "$HOME/.zshrc.local" ] || touch "$HOME/.zshrc.local"
+[ -f "$HOME/.gitconfig.local" ] || touch "$HOME/.gitconfig.local"
+
+# ---- git identity (written to ~/.gitconfig.local, kept out of the repo) ----
 set +e
-name="$(git config --global user.name)"
-email="$(git config --global user.email)"
+name="$(git config user.name)"
+email="$(git config user.email)"
 set -e
+git config --global core.excludesfile "$HOME/.gitignore_global" || true
 if [ -t 1 ]; then
   [ -z "$name" ] && name="$USER"
   printf 'git user.name [%s]: ' "$name"; read -r in_name; [ -n "$in_name" ] && name="$in_name"
   printf 'git user.email [%s]: ' "$email"; read -r in_email; [ -n "$in_email" ] && email="$in_email"
-  git config --global user.name "$name"
-  [ -n "$email" ] && git config --global user.email "$email"
-  git config --global core.excludesfile "$HOME/.gitignore_global"
+  git config --file "$HOME/.gitconfig.local" user.name "$name"
+  [ -n "$email" ] && git config --file "$HOME/.gitconfig.local" user.email "$email"
 else
   if [ -z "$name" ] || [ -z "$email" ]; then
-    echo "Set your git identity:"
-    echo "  git config --global user.name  <Name>"
-    echo "  git config --global user.email <Email>"
+    echo "Set your git identity in ~/.gitconfig.local:"
+    echo "  git config --file ~/.gitconfig.local user.name  <Name>"
+    echo "  git config --file ~/.gitconfig.local user.email <Email>"
   fi
-  git config --global core.excludesfile "$HOME/.gitignore_global" || true
 fi
 
 # ---- Neovim: install/sync plugins headlessly ----
@@ -81,10 +83,18 @@ if command -v nvim >/dev/null 2>&1; then
 fi
 
 # ---- default shell ----
-if command -v zsh >/dev/null 2>&1 && [ "${SHELL:-}" != "$(command -v zsh)" ]; then
-  log "Setting default shell to zsh (may prompt for password)"
-  sudo chsh -s "$(command -v zsh)" "$USER" 2>/dev/null || chsh -s "$(command -v zsh)" 2>/dev/null || \
-    echo "Could not change shell automatically; run: chsh -s $(command -v zsh)"
+# chsh edits /etc/passwd and needs root. Skip gracefully without sudo so this
+# works on machines where you only have your home directory.
+zsh_path="$(command -v zsh || true)"
+if [ -n "$zsh_path" ] && [ "${SHELL:-}" != "$zsh_path" ]; then
+  if [ -z "${NO_SUDO:-}" ] && command -v sudo >/dev/null 2>&1 && sudo -n true 2>/dev/null; then
+    log "Setting default shell to zsh"
+    sudo chsh -s "$zsh_path" "$USER" 2>/dev/null || \
+      echo "Could not change shell automatically; run: chsh -s $zsh_path"
+  else
+    echo "Skipping default-shell change (no sudo). To use zsh without chsh, add"
+    echo "to ~/.bashrc:  [ -z \"\$ZSH_VERSION\" ] && exec $zsh_path -l"
+  fi
 fi
 
 log "Setup complete. Public keys to register with GitHub/GitLab:"

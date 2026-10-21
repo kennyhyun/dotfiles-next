@@ -1,18 +1,17 @@
 # ~/.zshrc managed by chezmoi
-# Migrated from the legacy dotfiles .zshrc with cleanups.
+# Self-contained zsh config (no oh-my-zsh). Machine-specific settings go in
+# ~/.zshrc.local (sourced at the end).
 
 # ---- Editor ----
 export VISUAL=nvim
 export EDITOR="$VISUAL"
 
 # ---- PATH ----
-# Prepend user bins. Guard against duplicate entries on re-source.
-typeset -U path PATH   # zsh: keep PATH entries unique automatically
+# Prepend user bins. typeset -U keeps PATH entries unique on re-source.
+typeset -U path PATH
 path=("$HOME/bin" "$HOME/.local/bin" $path)
 
 # ---- Homebrew ----
-# Initialize brew once. typeset -U above prevents PATH duplication even if
-# this runs again in a subshell.
 if [ -z "$HOMEBREW_PREFIX" ]; then
   if [ -x /opt/homebrew/bin/brew ]; then
     eval "$(/opt/homebrew/bin/brew shellenv)"
@@ -23,26 +22,68 @@ if [ -z "$HOMEBREW_PREFIX" ]; then
   fi
 fi
 
+# ---- Completion ----
+# Native zsh completion (replaces oh-my-zsh's completion handling).
+autoload -Uz compinit
+compinit -d "${XDG_CACHE_HOME:-$HOME/.cache}/zcompdump"
+zstyle ':completion:*' menu select
+zstyle ':completion:*' matcher-list 'm:{a-zA-Z}={A-Za-z}' # case-insensitive
+
+# ---- History ----
+HISTFILE="$HOME/.zsh_history"
+HISTSIZE=100000
+SAVEHIST=100000
+setopt SHARE_HISTORY          # share history across sessions
+setopt HIST_IGNORE_ALL_DUPS   # drop older duplicate entries
+setopt HIST_IGNORE_SPACE      # ignore commands starting with a space
+setopt HIST_REDUCE_BLANKS
+setopt INC_APPEND_HISTORY
+
+# Prefix-based history search with Up/Down arrows
+autoload -Uz up-line-or-beginning-search down-line-or-beginning-search
+zle -N up-line-or-beginning-search
+zle -N down-line-or-beginning-search
+bindkey '^[[A' up-line-or-beginning-search    # Up
+bindkey '^[[B' down-line-or-beginning-search  # Down
+
 # ---- Aliases (from legacy config) ----
-# Docker
 alias d="docker"
 alias dc="docker compose"
 alias dp="docker ps --format '{{.Names}}\t{{.Ports}}\t{{.Status}}\t{{.Image}}'"
-
-# Kubernetes
 alias kc="kubectl"
-
-# grep that skips noisy dirs
 alias gwgrep='grep --color=auto --exclude-dir=.git --exclude-dir=node_modules --exclude-dir=docker_node_modules_cache'
 alias gg="gwgrep"
 
-# ---- NVM ----
-export NVM_DIR="$HOME/.nvm"
-[ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
-[ -s "$NVM_DIR/bash_completion" ] && \. "$NVM_DIR/bash_completion"
+# ---- Node via fnm (Fast Node Manager) ----
+# fnm replaces nvm (Rust-based, much faster shell startup).
+if command -v fnm >/dev/null 2>&1; then
+  eval "$(fnm env --use-on-cd --shell zsh)"
+fi
 
-# ---- fzf ----
-# Key bindings and fuzzy completion (installed by brew; file sourced if present)
+# ---- fzf (fuzzy finder + Ctrl-R history search) ----
 if command -v fzf >/dev/null 2>&1; then
   source <(fzf --zsh) 2>/dev/null || true
 fi
+
+# ---- Autosuggestions (fish-like inline suggestions) ----
+# Installed via brew; replaces the oh-my-zsh autosuggestions plugin.
+for _asg in \
+  "$HOMEBREW_PREFIX/share/zsh-autosuggestions/zsh-autosuggestions.zsh" \
+  /usr/share/zsh-autosuggestions/zsh-autosuggestions.zsh; do
+  [ -r "$_asg" ] && source "$_asg" && break
+done
+unset _asg
+
+# ---- Syntax highlighting (must be sourced last among zle widgets) ----
+for _zsh in \
+  "$HOMEBREW_PREFIX/share/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh" \
+  /usr/share/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh; do
+  [ -r "$_zsh" ] && source "$_zsh" && break
+done
+unset _zsh
+
+# ---- Machine-specific config (NOT managed by chezmoi) ----
+# Put host-specific settings (custom functions, extra env) in ~/.zshrc.local.
+# Created empty if missing so this source never errors.
+[ -f "$HOME/.zshrc.local" ] || touch "$HOME/.zshrc.local"
+source "$HOME/.zshrc.local"
