@@ -83,14 +83,28 @@ if command -v nvim >/dev/null 2>&1; then
 fi
 
 # ---- default shell ----
-# chsh edits /etc/passwd and needs root. Skip gracefully without sudo so this
-# works on machines where you only have your home directory.
+# chsh edits /etc/passwd (and zsh must be listed in /etc/shells), both of which
+# live on the (possibly read-only) rootfs. Skip gracefully without sudo.
 zsh_path="$(command -v zsh || true)"
 if [ -n "$zsh_path" ] && [ "${SHELL:-}" != "$zsh_path" ]; then
   if [ -z "${NO_SUDO:-}" ] && command -v sudo >/dev/null 2>&1 && sudo -n true 2>/dev/null; then
+    # Unlock read-only rootfs if the linuxdev helpers are present and needed.
+    relock=""
+    if command -v rootfs-rw >/dev/null 2>&1 && ! sudo test -w /etc 2>/dev/null; then
+      log "Read-only rootfs: unlocking for chsh"
+      sudo rootfs-rw && relock=1
+      [ -n "$relock" ] && trap 'sudo rootfs-ro || true' EXIT INT TERM
+    fi
     log "Setting default shell to zsh"
+    # Ensure the shell is registered in /etc/shells, then switch.
+    grep -qxF "$zsh_path" /etc/shells 2>/dev/null || echo "$zsh_path" | sudo tee -a /etc/shells >/dev/null
     sudo chsh -s "$zsh_path" "$USER" 2>/dev/null || \
       echo "Could not change shell automatically; run: chsh -s $zsh_path"
+    if [ -n "$relock" ]; then
+      log "Re-locking rootfs"
+      sudo rootfs-ro || echo "WARNING: rootfs-ro failed; rootfs left writable."
+      trap - EXIT INT TERM
+    fi
   else
     echo "Skipping default-shell change (no sudo). To use zsh without chsh, add"
     echo "to ~/.bashrc:  [ -z \"\$ZSH_VERSION\" ] && exec $zsh_path -l"

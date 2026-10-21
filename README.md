@@ -82,7 +82,17 @@ PRODUCTION=1 chezmoi apply
 
 # Linux dev role: also install Docker + microk8s
 DOTFILES_ROLE=linuxdev chezmoi apply
+
+# No root available: install everything user-local via Homebrew,
+# skip apt packages / chsh
+NO_SUDO=1 chezmoi apply
 ```
+
+The bootstrap is Homebrew-first, so most tooling installs into your home
+without root. On a **read-only rootfs** (e.g. a linuxdev WSL image) where the
+`rootfs-rw` / `rootfs-ro` helpers exist, the package script unlocks the rootfs
+before `sudo` installs and re-locks it afterwards — guaranteed even if the
+install fails.
 
 ## Day-to-day with chezmoi
 
