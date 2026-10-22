@@ -31,11 +31,14 @@ have_sudo() {
 # ---- read-only rootfs support (e.g. linuxdev WSL) ----
 # Some systems keep the root filesystem read-only and expose rootfs-rw /
 # rootfs-ro helpers to toggle it (bind-remount of /usr /etc ... including the
-# systemd PID-1 mount namespace). When present and the rootfs is actually
-# read-only, unlock it before sudo installs and re-lock it afterwards.
+# systemd PID-1 mount namespace).
 #
-# Safety: we only re-lock if WE unlocked it (so a normally-rw machine is left
-# untouched), and an EXIT trap guarantees re-locking even if the script fails.
+# Design: *lazy* unlock. We do NOT unlock up-front. Instead each install step
+# calls rootfs_ensure_rw() only once it has decided it actually has something
+# to write. If every package is already installed, rootfs_ensure_rw is never
+# called and the rootfs is never touched. rootfs_ensure_rw is idempotent, so
+# multiple steps can call it freely; the single EXIT trap re-locks at the end,
+# but only if WE unlocked (a normally-rw machine is left untouched).
 ROOTFS_WE_UNLOCKED=""
 
 # rootfs_is_ro: true if /etc is currently not writable (proxy for ro rootfs).
@@ -48,15 +51,17 @@ rootfs_is_ro() {
   return 0     # read-only
 }
 
-rootfs_unlock() {
-  command -v rootfs-rw >/dev/null 2>&1 || return 0   # no helper -> nothing to do
+# rootfs_ensure_rw: make the rootfs writable *if needed*. Safe to call many
+# times. No-op when: no helper, no sudo, already unlocked by us, or already rw.
+rootfs_ensure_rw() {
+  [ -n "$ROOTFS_WE_UNLOCKED" ] && return 0            # we already unlocked
+  command -v rootfs-rw >/dev/null 2>&1 || return 0    # no helper -> nothing to do
   have_sudo || return 0
   rootfs_is_ro || return 0                            # already rw -> leave as-is
   log "Read-only rootfs detected: unlocking (rootfs-rw)"
   if sudo rootfs-rw; then
     ROOTFS_WE_UNLOCKED=1
-    # Ensure we always re-lock, even on error/interrupt.
-    trap rootfs_relock EXIT INT TERM
+    trap rootfs_relock EXIT INT TERM                  # guarantee re-lock
   else
     echo "WARNING: rootfs-rw failed; sudo installs may fail on read-only dirs."
   fi
@@ -103,9 +108,10 @@ install_system_packages() {
   local distro perf_pkg
   distro="$(grep '^ID=' /etc/os-release | cut -d= -f2 | tr -d '"')"
   if [ "$distro" = "ubuntu" ]; then perf_pkg="linux-tools-common"; else perf_pkg="linux-perf"; fi
-  sudo apt-get update
+
   # build-essential provides the C compiler + libc headers treesitter needs.
-  sudo apt-get install -y \
+  local want missing=""
+  for want in \
     build-essential \
     "$perf_pkg" \
     apt-transport-https ca-certificates \
@@ -115,7 +121,21 @@ install_system_packages() {
     jq curl \
     default-jre \
     xclip \
-    lshw net-tools psmisc
+    lshw net-tools psmisc; do
+    # Keep only packages that are not already installed.
+    dpkg -s "$want" >/dev/null 2>&1 || missing="$missing $want"
+  done
+
+  if [ -z "$missing" ]; then
+    log "All apt packages already installed; skipping (no rootfs unlock needed)."
+    return 0
+  fi
+
+  log "Installing missing apt packages:$missing"
+  rootfs_ensure_rw                 # unlock only now that we know we must write
+  sudo apt-get update
+  # shellcheck disable=SC2086  # intentional word-splitting of the package list
+  sudo apt-get install -y $missing
 }
 
 # Everything else via brew (no root needed once brew exists).
@@ -145,19 +165,30 @@ install_role_extras() {
     log "linuxdev role requested but no sudo: skipping docker/microk8s."
     return 0
   fi
-  log "linuxdev role: installing docker + microk8s"
+
+  # Decide what actually needs installing (both sub-scripts are idempotent, but
+  # we check here too so we only unlock the rootfs when there is real work).
   local sdir="$HOME/.local/share/chezmoi/scripts"
-  [ -x "$sdir/install_microk8s.sh" ] && "$sdir/install_microk8s.sh" || true
-  [ -x "$sdir/install_docker.sh" ] && "$sdir/install_docker.sh" || true
+  local need_docker="" need_microk8s=""
+  [ -x "$sdir/install_docker.sh" ]   && ! docker version        >/dev/null 2>&1 && need_docker=1
+  [ -x "$sdir/install_microk8s.sh" ] && [ -z "$(snap microk8s --version 2>/dev/null)" ] && need_microk8s=1
+
+  if [ -z "$need_docker" ] && [ -z "$need_microk8s" ]; then
+    log "docker + microk8s already present; skipping (no rootfs unlock needed)."
+    return 0
+  fi
+
+  log "linuxdev role: installing docker + microk8s"
+  rootfs_ensure_rw                 # unlock only now that we know we must write
+  [ -n "$need_microk8s" ] && "$sdir/install_microk8s.sh" || true
+  [ -n "$need_docker" ]   && "$sdir/install_docker.sh" || true
 }
 
-# System/apt installs and linuxdev extras touch read-only system dirs, so
-# unlock the rootfs around them (no-op on normal machines). brew installs to
-# its own prefix and does not need this.
-rootfs_unlock
+# brew installs to its own prefix and needs no root / no rootfs unlock.
+# System/apt steps unlock the rootfs lazily (only when they have something to
+# install); the EXIT trap set by rootfs_ensure_rw re-locks afterwards.
 install_system_packages
 install_role_extras
-rootfs_relock
 
 ensure_brew
 install_brew_packages

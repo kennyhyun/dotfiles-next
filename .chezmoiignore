@@ -3,3 +3,8 @@ README.md
 readme.md
 LICENSE
 scripts/**
+
+# ~/.zshrc is user-owned and only *sources* chezmoi's common config
+# (~/.config/zsh/chezmoi.zsh). chezmoi must not replace it.
+.zshrc
+.zshrc.local
