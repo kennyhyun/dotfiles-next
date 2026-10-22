@@ -20,8 +20,8 @@ and macOS. Bootstraps a fresh machine with a minimal, modern toolchain.
 | Editor | Neovim 0.10+ with LSP (`ts_ls`, `eslint`), treesitter, blink.cmp, telescope, conform (prettier), lualine, gitsigns, catppuccin theme |
 | Shell | zsh (self-contained, no oh-my-zsh dependency), tmux + tpm |
 | Terminal | Alacritty |
-| CLI | git, git-lfs, ripgrep, fd, jq, httpie, fzf |
-| Dev (non-production) | awscli, deno, opentofu, graphviz, Node.js (via nvm) |
+| CLI | git, git-lfs, ripgrep, fd, jq, httpie, fzf, tailscale |
+| Dev (non-production) | awscli, deno, opentofu, graphviz, Node.js (via fnm) |
 | Linux `linuxdev` role | Docker, microk8s, kubectl |
 
 ## Neovim

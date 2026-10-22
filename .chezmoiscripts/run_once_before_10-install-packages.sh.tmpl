@@ -184,12 +184,13 @@ install_role_extras() {
   [ -n "$need_docker" ]   && "$sdir/install_docker.sh" || true
 }
 
-# Tailscale (mesh VPN). CLI and daemon ship as one package.
-#   Linux : official installer adds the apt repo + tailscaled systemd service
-#           (needs root). The rootfs is unlocked lazily, only when installing.
+# Tailscale (mesh VPN), all machines. CLI and daemon ship as one package.
+#   Linux : scripts/install_tailscale.sh runs the official installer (apt repo
+#           + tailscaled systemd service); needs root and touches the rootfs,
+#           so we unlock lazily — only when tailscale is actually missing.
 #   macOS : brew cask.
-# Idempotent: if `tailscale` is already present, nothing happens (and on a
-# read-only rootfs it is never unlocked).
+# Idempotent: skips entirely if the tailscale binary already exists (and then
+# a read-only rootfs is never unlocked).
 install_tailscale() {
   if command -v tailscale >/dev/null 2>&1; then
     log "tailscale already installed ($(tailscale version 2>/dev/null | head -1)); skipping."
@@ -202,16 +203,15 @@ install_tailscale() {
     return 0
   fi
 
-  # Linux: official installer (apt repo + systemd service). Needs root.
   if ! have_sudo; then
     log "No sudo (or NO_SUDO set): skipping tailscale."
-    echo "  Install later with: curl -fsSL https://tailscale.com/install.sh | sudo sh"
+    echo "  Install later with: scripts/install_tailscale.sh"
     return 0
   fi
-  log "Installing tailscale (official installer)"
+  log "Installing tailscale (systemd service)"
   rootfs_ensure_rw                 # unlock only now that we know we must write
-  curl -fsSL https://tailscale.com/install.sh | sudo sh
-  echo "  Log in with: sudo tailscale up"
+  local sdir="$HOME/.local/share/chezmoi/scripts"
+  [ -x "$sdir/install_tailscale.sh" ] && "$sdir/install_tailscale.sh" || true
 }
 
 # brew installs to its own prefix and needs no root / no rootfs unlock.
