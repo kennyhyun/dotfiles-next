@@ -3,8 +3,16 @@
 # wherever possible.
 #
 # Env flags:
-#   PRODUCTION=1   -> skip developer tooling, install essentials only
-#   DOTFILES_ROLE  -> "linuxdev" also installs docker + microk8s (needs sudo)
+#   PRODUCTION=1   -> skip developer tooling (awscli/deno/opentofu/graphviz),
+#                     install essentials only
+#   DOTFILES_ROLE  -> "linuxdev": also install docker + microk8s (needs sudo)
+#                     "lite":     low-footprint server. Skips dev tooling AND
+#                                 the heavy apt packages (build-essential,
+#                                 default-jre, perf tools) and kubectl; installs
+#                                 podman instead of docker; Neovim runs with NO
+#                                 plugins (a marker file tells init.lua to skip
+#                                 lazy.nvim). For small / memory-constrained or
+#                                 security-sensitive servers.
 #   NO_SUDO=1      -> never call sudo; skip all steps that require root
 #                     (system apt packages, kubectl to /usr/local/bin). Use on
 #                     machines where you only have your home directory.
@@ -18,6 +26,11 @@ set -euo pipefail
 ROLE="${DOTFILES_ROLE:-base}"
 SKIP_DEVTOOLS=""
 [ -n "${PRODUCTION:-}" ] && SKIP_DEVTOOLS=1
+
+# "lite" is a low-footprint server role: it implies SKIP_DEVTOOLS and further
+# trims the apt list, swaps docker->podman, and runs Neovim plugin-free.
+LITE=""
+[ "$ROLE" = "lite" ] && { LITE=1; SKIP_DEVTOOLS=1; }
 
 log() { printf '\n\033[1;34m==> %s\033[0m\n' "$*"; }
 
@@ -109,19 +122,34 @@ install_system_packages() {
   distro="$(grep '^ID=' /etc/os-release | cut -d= -f2 | tr -d '"')"
   if [ "$distro" = "ubuntu" ]; then perf_pkg="linux-tools-common"; else perf_pkg="linux-perf"; fi
 
-  # build-essential provides the C compiler + libc headers treesitter needs.
+  # Base apt list. Always-needed essentials that are cheap on disk.
   local want missing=""
-  for want in \
-    build-essential \
-    "$perf_pkg" \
-    apt-transport-https ca-certificates \
-    git git-lfs \
-    htop \
-    python3-pip python3-venv pipx \
-    jq curl \
-    default-jre \
-    xclip \
-    lshw net-tools psmisc; do
+  local pkgs="
+    apt-transport-https ca-certificates
+    git git-lfs
+    htop
+    jq curl
+    net-tools psmisc
+  "
+  # Heavy / developer packages: skipped on the "lite" server role.
+  #   build-essential : C compiler + libc headers (treesitter, source builds)
+  #   default-jre      : a whole JRE, ~100-200MB
+  #   perf tools       : kernel perf counters
+  #   python/pipx      : local python tooling
+  #   xclip / lshw     : desktop clipboard / hardware probe, rarely useful on a
+  #                      headless server
+  if [ -z "$LITE" ]; then
+    pkgs="$pkgs
+      build-essential
+      $perf_pkg
+      python3-pip python3-venv pipx
+      default-jre
+      xclip
+      lshw
+    "
+  fi
+
+  for want in $pkgs; do
     # Keep only packages that are not already installed.
     dpkg -s "$want" >/dev/null 2>&1 || missing="$missing $want"
   done
@@ -150,10 +178,34 @@ install_brew_packages() {
     zsh-autosuggestions \
     zsh-syntax-highlighting \
     fnm \
-    ripgrep fd jq git-lfs httpie fzf kubernetes-cli
+    ripgrep fd jq git-lfs httpie fzf
+  # kubectl only off the lite role (lite uses podman, no k8s client by default).
+  if [ -z "$LITE" ]; then
+    brew install kubernetes-cli
+  fi
   if [ -z "$SKIP_DEVTOOLS" ]; then
     brew install awscli deno opentofu graphviz
   fi
+}
+
+# lite role: podman instead of docker. podman is daemonless + rootless, so it
+# is a better fit for a low-footprint server than the docker daemon. Installed
+# from apt (official packages on current Debian/Ubuntu).
+install_lite_extras() {
+  [ "$OS" != "Linux" ] && return 0
+  [ -n "$LITE" ] || return 0
+  if ! have_sudo; then
+    log "lite role requested but no sudo: skipping podman (install it later)."
+    return 0
+  fi
+  if command -v podman >/dev/null 2>&1; then
+    log "podman already installed ($(podman --version 2>/dev/null)); skipping."
+    return 0
+  fi
+  log "lite role: installing podman"
+  rootfs_ensure_rw                 # unlock only now that we know we must write
+  sudo apt-get install -y podman \
+    || echo "Could not install podman via apt (is the package available?)."
 }
 
 # linuxdev extras need root (docker/microk8s touch system services).
@@ -214,14 +266,31 @@ install_tailscale() {
   [ -x "$sdir/install_tailscale.sh" ] && "$sdir/install_tailscale.sh" || true
 }
 
+# Neovim runs plugin-free on the lite role. We drop a marker file that
+# init.lua checks; when present it skips the lazy.nvim bootstrap entirely, so
+# no third-party plugins are cloned/compiled (smaller footprint + no plugin
+# supply-chain surface on a server). Built-in syntax highlighting still works.
+set_nvim_profile() {
+  local marker="$HOME/.config/nvim/.minimal"
+  if [ -n "$LITE" ]; then
+    mkdir -p "$HOME/.config/nvim"
+    : > "$marker"
+    log "lite role: Neovim set to plugin-free (marker: $marker)"
+  else
+    rm -f "$marker" 2>/dev/null || true
+  fi
+}
+
 # brew installs to its own prefix and needs no root / no rootfs unlock.
 # System/apt steps unlock the rootfs lazily (only when they have something to
 # install); the EXIT trap set by rootfs_ensure_rw re-locks afterwards.
 install_system_packages
 install_role_extras
+install_lite_extras
 install_tailscale
 
 ensure_brew
 install_brew_packages
+set_nvim_profile
 
 log "Package installation complete."

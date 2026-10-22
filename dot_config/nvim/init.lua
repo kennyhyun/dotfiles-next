@@ -9,6 +9,19 @@ vim.g.maplocalleader = ","
 require("config.options")
 require("config.keymaps")
 
+-- Plugin-free "minimal" profile (lite server role).
+-- The package bootstrap drops ~/.config/nvim/.minimal on the lite role. When
+-- present we skip lazy.nvim and all plugins entirely: no third-party code is
+-- cloned or compiled, which keeps a small/sensitive server lean and removes the
+-- plugin supply-chain surface. Neovim's built-in syntax highlighting and
+-- filetype detection still work, which is all a server editor needs.
+local minimal = (vim.uv or vim.loop).fs_stat(vim.fn.stdpath("config") .. "/.minimal")
+if minimal then
+  vim.cmd("syntax on")
+  vim.cmd("filetype plugin indent on")
+  return
+end
+
 -- Bootstrap lazy.nvim (plugin manager). It pins every plugin to a commit via
 -- lazy-lock.json, which we commit to the repo for reproducible, supply-chain
 -- friendly installs.

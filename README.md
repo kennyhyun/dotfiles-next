@@ -23,6 +23,7 @@ and macOS. Bootstraps a fresh machine with a minimal, modern toolchain.
 | CLI | git, git-lfs, ripgrep, fd, jq, httpie, fzf, tailscale |
 | Dev (non-production) | awscli, deno, opentofu, graphviz, Node.js (via fnm) |
 | Linux `linuxdev` role | Docker, microk8s, kubectl |
+| Linux `lite` role | Low-footprint server: no dev tooling, no build-essential/JRE/perf/kubectl, **podman** instead of docker, **plugin-free Neovim** (built-in syntax only) |
 
 ## Neovim
 
@@ -82,6 +83,11 @@ PRODUCTION=1 chezmoi apply
 
 # Linux dev role: also install Docker + microk8s
 DOTFILES_ROLE=linuxdev chezmoi apply
+
+# Lite server role: low-footprint. Skips dev tooling + heavy apt packages
+# (build-essential, default-jre, perf tools) and kubectl, installs podman
+# instead of docker, and runs Neovim plugin-free (built-in syntax only).
+DOTFILES_ROLE=lite chezmoi apply
 
 # No root available: install everything user-local via Homebrew,
 # skip apt packages / chsh

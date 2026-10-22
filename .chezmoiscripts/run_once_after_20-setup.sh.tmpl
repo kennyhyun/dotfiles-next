@@ -6,6 +6,13 @@ set -euo pipefail
 
 log() { printf '\n\033[1;34m==> %s\033[0m\n' "$*"; }
 
+# Role awareness (mirrors the package script). The "lite" server role runs
+# Neovim plugin-free and does not need the Node toolchain, so we skip the
+# heavy post-apply steps for it.
+ROLE="${DOTFILES_ROLE:-base}"
+LITE=""
+[ "$ROLE" = "lite" ] && LITE=1
+
 # ---- Homebrew into PATH for this script ----
 for p in /opt/homebrew/bin/brew /usr/local/bin/brew /home/linuxbrew/.linuxbrew/bin/brew; do
   [ -x "$p" ] && eval "$("$p" shellenv)" && break
@@ -13,8 +20,10 @@ done
 
 # ---- Node via fnm (Fast Node Manager; replaces nvm) ----
 # fnm is installed by the package script (brew). Everything lives under the
-# user's home — no root required.
-if command -v fnm >/dev/null 2>&1; then
+# user's home — no root required. Skipped on the lite server role.
+if [ -n "$LITE" ]; then
+  log "lite role: skipping Node toolchain install."
+elif command -v fnm >/dev/null 2>&1; then
   eval "$(fnm env --shell bash)"
   if ! fnm list 2>/dev/null | grep -qiE 'lts|v[0-9]'; then
     log "Installing Node LTS via fnm"
@@ -76,7 +85,11 @@ else
 fi
 
 # ---- Neovim: install/sync plugins headlessly ----
-if command -v nvim >/dev/null 2>&1; then
+# On the lite role Neovim is plugin-free (init.lua returns early), so there is
+# nothing to sync — skip to avoid cloning lazy.nvim / compiling treesitter.
+if [ -n "$LITE" ]; then
+  log "lite role: Neovim is plugin-free; skipping plugin sync."
+elif command -v nvim >/dev/null 2>&1; then
   log "Syncing Neovim plugins (lazy)"
   nvim --headless "+Lazy! sync" +qa 2>/dev/null || true
   nvim --headless "+TSUpdateSync" +qa 2>/dev/null || true
