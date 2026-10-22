@@ -184,11 +184,42 @@ install_role_extras() {
   [ -n "$need_docker" ]   && "$sdir/install_docker.sh" || true
 }
 
+# Tailscale (mesh VPN). CLI and daemon ship as one package.
+#   Linux : official installer adds the apt repo + tailscaled systemd service
+#           (needs root). The rootfs is unlocked lazily, only when installing.
+#   macOS : brew cask.
+# Idempotent: if `tailscale` is already present, nothing happens (and on a
+# read-only rootfs it is never unlocked).
+install_tailscale() {
+  if command -v tailscale >/dev/null 2>&1; then
+    log "tailscale already installed ($(tailscale version 2>/dev/null | head -1)); skipping."
+    return 0
+  fi
+
+  if [ "$OS" = "Darwin" ]; then
+    log "Installing tailscale (brew cask)"
+    brew install --cask tailscale
+    return 0
+  fi
+
+  # Linux: official installer (apt repo + systemd service). Needs root.
+  if ! have_sudo; then
+    log "No sudo (or NO_SUDO set): skipping tailscale."
+    echo "  Install later with: curl -fsSL https://tailscale.com/install.sh | sudo sh"
+    return 0
+  fi
+  log "Installing tailscale (official installer)"
+  rootfs_ensure_rw                 # unlock only now that we know we must write
+  curl -fsSL https://tailscale.com/install.sh | sudo sh
+  echo "  Log in with: sudo tailscale up"
+}
+
 # brew installs to its own prefix and needs no root / no rootfs unlock.
 # System/apt steps unlock the rootfs lazily (only when they have something to
 # install); the EXIT trap set by rootfs_ensure_rw re-locks afterwards.
 install_system_packages
 install_role_extras
+install_tailscale
 
 ensure_brew
 install_brew_packages
