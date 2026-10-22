@@ -58,10 +58,31 @@ if [ ! -f "$HOME/.ssh/id_ed25519_bastion" ]; then
 fi
 
 # ---- git identity ----
-# ---- Machine-specific config files (NOT managed by chezmoi) ----
-# Ensure they exist so the managed ~/.zshrc source and ~/.gitconfig include
-# never error. Host-specific settings live here and survive re-apply.
-[ -f "$HOME/.zshrc.local" ] || touch "$HOME/.zshrc.local"
+# ---- ~/.zshrc: user-owned, sources the shared chezmoi config on its FIRST line ----
+# chezmoi does NOT manage ~/.zshrc (see .chezmoiignore). Instead we make sure it
+# exists and that its first line pulls in ~/.config/zsh/chezmoi.zsh. Everything
+# below that line is yours — ~/.zshrc now plays the role the old ~/.zshrc.local
+# used to. Idempotent: the source line is inserted only if not already present.
+ZSHRC="$HOME/.zshrc"
+SOURCE_LINE='[ -r ~/.config/zsh/chezmoi.zsh ] && source ~/.config/zsh/chezmoi.zsh'
+MARKER='chezmoi.zsh'                       # substring that identifies the line
+
+[ -f "$ZSHRC" ] || { touch "$ZSHRC"; log "Created empty ~/.zshrc"; }
+
+if ! grep -qF "$MARKER" "$ZSHRC" 2>/dev/null; then
+  log "Linking ~/.zshrc -> shared config (prepending source line)"
+  # Prepend the source line as the very first line, keeping existing content.
+  tmp="$(mktemp)"
+  {
+    printf '%s\n' "# Source shared chezmoi zsh config (managed). Keep this first."
+    printf '%s\n' "$SOURCE_LINE"
+    printf '\n'
+    cat "$ZSHRC"
+  } > "$tmp"
+  mv "$tmp" "$ZSHRC"
+fi
+
+# ---- git identity: ~/.gitconfig.local (still kept out of the repo) ----
 [ -f "$HOME/.gitconfig.local" ] || touch "$HOME/.gitconfig.local"
 
 # ---- git identity (written to ~/.gitconfig.local, kept out of the repo) ----

@@ -1,11 +1,14 @@
 # ~/.config/zsh/chezmoi.zsh — managed by chezmoi.
-# This file is NOT a replacement for ~/.zshrc. Your own ~/.zshrc stays intact
-# and sources this file at its end:
+# This is the shared, machine-independent zsh config. It is NOT ~/.zshrc.
+#
+# The post-apply setup ensures your ~/.zshrc exists (creating an empty one if
+# needed) and that its FIRST line sources this file:
 #
 #   [ -r ~/.config/zsh/chezmoi.zsh ] && source ~/.config/zsh/chezmoi.zsh
 #
-# Put modern, machine-independent zsh tooling here. Anything host-specific
-# stays in your own ~/.zshrc (or ~/.zshrc.local).
+# So ~/.zshrc itself plays the role of the old ~/.zshrc.local: put anything
+# host-specific (custom functions, extra env, machine paths) directly in your
+# ~/.zshrc, below that first source line. chezmoi never overwrites ~/.zshrc.
 
 # ---- Editor ----
 export VISUAL=nvim
