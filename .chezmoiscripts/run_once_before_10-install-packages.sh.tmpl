@@ -177,14 +177,15 @@ install_brew_packages() {
     zsh \
     zsh-autosuggestions \
     zsh-syntax-highlighting \
-    fnm \
     ripgrep fd jq git-lfs httpie fzf
   # kubectl only off the lite role (lite uses podman, no k8s client by default).
   if [ -z "$LITE" ]; then
     brew install kubernetes-cli
   fi
+  # Developer tooling (skipped by PRODUCTION / lite). fnm is here because Node
+  # is treated as dev tooling: a production / lite server gets no Node runtime.
   if [ -z "$SKIP_DEVTOOLS" ]; then
-    brew install awscli deno opentofu graphviz
+    brew install fnm awscli deno opentofu graphviz
   fi
 }
 

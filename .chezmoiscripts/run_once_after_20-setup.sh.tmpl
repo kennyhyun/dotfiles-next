@@ -6,12 +6,14 @@ set -euo pipefail
 
 log() { printf '\n\033[1;34m==> %s\033[0m\n' "$*"; }
 
-# Role awareness (mirrors the package script). The "lite" server role runs
-# Neovim plugin-free and does not need the Node toolchain, so we skip the
-# heavy post-apply steps for it.
+# Role awareness (mirrors the package script). SKIP_DEVTOOLS (set by PRODUCTION
+# or the lite role) means no developer tooling — including Node, which we treat
+# as dev tooling. LITE additionally runs Neovim plugin-free.
 ROLE="${DOTFILES_ROLE:-base}"
 LITE=""
 [ "$ROLE" = "lite" ] && LITE=1
+SKIP_DEVTOOLS=""
+{ [ -n "${PRODUCTION:-}" ] || [ -n "$LITE" ]; } && SKIP_DEVTOOLS=1
 
 # ---- Homebrew into PATH for this script ----
 for p in /opt/homebrew/bin/brew /usr/local/bin/brew /home/linuxbrew/.linuxbrew/bin/brew; do
@@ -19,10 +21,10 @@ for p in /opt/homebrew/bin/brew /usr/local/bin/brew /home/linuxbrew/.linuxbrew/b
 done
 
 # ---- Node via fnm (Fast Node Manager; replaces nvm) ----
-# fnm is installed by the package script (brew). Everything lives under the
-# user's home — no root required. Skipped on the lite server role.
-if [ -n "$LITE" ]; then
-  log "lite role: skipping Node toolchain install."
+# fnm is installed by the package script (brew) only when dev tooling is
+# enabled. Node is dev tooling, so PRODUCTION / lite skip it entirely.
+if [ -n "$SKIP_DEVTOOLS" ]; then
+  log "Dev tooling disabled (PRODUCTION/lite): skipping Node toolchain."
 elif command -v fnm >/dev/null 2>&1; then
   eval "$(fnm env --shell bash)"
   if ! fnm list 2>/dev/null | grep -qiE 'lts|v[0-9]'; then

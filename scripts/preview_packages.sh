@@ -42,9 +42,9 @@ resolve_flags() {
 APT_BASE="apt-transport-https ca-certificates git git-lfs htop jq curl net-tools psmisc"
 APT_HEAVY="build-essential PERF_PKG python3-pip python3-venv pipx default-jre xclip lshw"
 
-BREW_CORE="neovim tmux zsh zsh-autosuggestions zsh-syntax-highlighting fnm ripgrep fd jq git-lfs httpie fzf"
+BREW_CORE="neovim tmux zsh zsh-autosuggestions zsh-syntax-highlighting ripgrep fd jq git-lfs httpie fzf"
 BREW_KUBECTL="kubernetes-cli"
-BREW_DEVEXTRAS="awscli deno opentofu graphviz"
+BREW_DEVEXTRAS="fnm awscli deno opentofu graphviz"
 
 # perf package depends on distro; show both possibilities in the preview.
 PERF_NOTE="linux-tools-common (ubuntu) | linux-perf (other)"
@@ -93,8 +93,8 @@ compute() {
   fi
 
   # ---- npm globals (after-setup) ----
-  if [ -n "$LITE" ]; then
-    NODE_OUT="(none — lite skips the Node toolchain)"
+  if [ -n "$SKIP_DEVTOOLS" ]; then
+    NODE_OUT="(none — Node is dev tooling; PRODUCTION/lite skip it)"
   else
     NODE_OUT="Node LTS (fnm) + global: yarn, prettier"
   fi
