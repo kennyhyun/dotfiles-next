@@ -22,4 +22,16 @@ if command -v systemctl >/dev/null 2>&1; then
     || echo "Could not enable tailscaled via systemd (is systemd running?)."
 fi
 
+# Grant the current user operator rights so non-root tooling (e.g. Kiro Crew
+# mobile access via `tailscale serve`) can change serve config without sudo.
+# Only applies once the node is authenticated; otherwise we just note it.
+if tailscale status >/dev/null 2>&1; then
+  echo "Granting tailscale operator rights to '$USER'"
+  sudo tailscale set --operator="$USER" \
+    || echo "Could not set tailscale operator (is the node authenticated?)."
+else
+  echo "Node not authenticated yet; after 'sudo tailscale up' run:"
+  echo "  sudo tailscale set --operator=\$USER"
+fi
+
 echo "tailscale installed. Run 'sudo tailscale up' to authenticate this machine."
