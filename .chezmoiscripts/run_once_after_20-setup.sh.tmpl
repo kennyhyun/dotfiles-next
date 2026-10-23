@@ -84,6 +84,24 @@ if ! grep -qF "$MARKER" "$ZSHRC" 2>/dev/null; then
   mv "$tmp" "$ZSHRC"
 fi
 
+# ---- Optional prompt module (user-togglable) ----
+# Add a source line for the managed prompt (~/.config/zsh/chezmoi.zsh.prompt).
+# It is appended ONCE, and only if no reference to it exists yet — INCLUDING a
+# commented-out one. So if you disable the prompt on a machine by deleting or
+# commenting the line, setup will NOT re-add it. Grep is comment-agnostic (it
+# matches the path substring whether the line is active or commented).
+PROMPT_LINE='[ -r ~/.config/zsh/chezmoi.zsh.prompt ] && source ~/.config/zsh/chezmoi.zsh.prompt'
+PROMPT_MARKER='chezmoi.zsh.prompt'         # distinct from the base marker above
+
+if ! grep -qF "$PROMPT_MARKER" "$ZSHRC" 2>/dev/null; then
+  log "Adding optional prompt source line to ~/.zshrc (comment it out to disable)"
+  {
+    printf '\n%s\n' "# Optional managed prompt. Comment out or delete this line to disable it"
+    printf '%s\n' "# on this machine; it will NOT be re-added once removed/commented."
+    printf '%s\n' "$PROMPT_LINE"
+  } >> "$ZSHRC"
+fi
+
 # ---- git identity: ~/.gitconfig.local (still kept out of the repo) ----
 [ -f "$HOME/.gitconfig.local" ] || touch "$HOME/.gitconfig.local"
 

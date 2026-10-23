@@ -1,0 +1,49 @@
+# ~/.config/zsh/chezmoi.zsh.prompt — managed by chezmoi.
+# Optional prompt module. ~/.zshrc sources this near its top IF the source line
+# is present; delete or comment that line out on a given machine to disable this
+# prompt there (the setup script will NOT re-add it once you have removed or
+# commented it). Everything here can also be overridden by redefining PROMPT
+# later in your own ~/.zshrc.
+#
+# Prompt: current directory + git branch (vcs_info, memoized + throttled).
+# Built-in vcs_info can be ~220ms per call in a huge monorepo (10k+ tracked
+# files), which stutters on every prompt. We memoize the result and, in the
+# same directory, only recompute at most once per second (throttle). Changing
+# directory bypasses the throttle for an immediate refresh. This keeps the full
+# vcs_info feature set (dirty markers *,+) without the per-keystroke stall.
+autoload -Uz vcs_info
+setopt PROMPT_SUBST
+
+zstyle ':vcs_info:*' enable git
+zstyle ':vcs_info:git:*' check-for-changes true
+zstyle ':vcs_info:git:*' unstagedstr '*'
+zstyle ':vcs_info:git:*' stagedstr '+'
+zstyle ':vcs_info:git:*' formats       ' %F{yellow}(%b%u%c)%f'
+zstyle ':vcs_info:git:*' actionformats ' %F{yellow}(%b|%a%u%c)%f'
+
+# memoize/throttle state
+typeset -g _VCS_CACHE=''        # last computed vcs string
+typeset -g _VCS_CACHE_PWD=''    # the $PWD it was computed in
+typeset -gF _VCS_CACHE_TS=0     # the epoch (fractional seconds) then
+typeset -gF _VCS_THROTTLE=1.0   # minimum interval between real calls (s)
+
+_vcs_info_memo() {
+  local now=$EPOCHREALTIME   # fractional epoch from zsh/datetime
+  # same dir + within throttle window -> reuse cache (no real vcs_info call)
+  if [[ $PWD == $_VCS_CACHE_PWD ]] && (( now - _VCS_CACHE_TS < _VCS_THROTTLE )); then
+    return
+  fi
+  vcs_info
+  _VCS_CACHE=$vcs_info_msg_0_
+  _VCS_CACHE_PWD=$PWD
+  _VCS_CACHE_TS=$now
+}
+# load the datetime module so EPOCHREALTIME is available
+zmodload -F zsh/datetime p:EPOCHREALTIME 2>/dev/null
+precmd_functions+=( _vcs_info_memo )
+
+# Prompt: [current dir] (git branch) $
+#  %1~          = current directory name only (home abbreviated to ~)
+#  ${_VCS_CACHE}= cached git info (refreshed, throttled, in precmd)
+#  %(?.A.B)     = last exit code 0 -> A else B  (green '$' on success / red on fail)
+PROMPT='%F{cyan}%1~%f${_VCS_CACHE} %(?.%F{green}.%F{red})$%f '

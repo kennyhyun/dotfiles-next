@@ -26,6 +26,12 @@ if command -v fzf >/dev/null 2>&1; then
   source <(fzf --zsh) 2>/dev/null || true
 fi
 
+# ---- Key bindings: emacs mode for the zsh line editor ----
+# Scope is ONLY zsh's line editor (ZLE) — git ($EDITOR=nvim), less and tmux
+# have their own keymaps and are unaffected. This keeps ^A/^E/^R/^K etc. working
+# as expected regardless of $EDITOR or $VISUAL being set to nvim above.
+bindkey -e
+
 # Ctrl-X Ctrl-E: edit the current command line in $EDITOR (nvim).
 # Best way to edit long / multi-line commands comfortably.
 autoload -Uz edit-command-line
