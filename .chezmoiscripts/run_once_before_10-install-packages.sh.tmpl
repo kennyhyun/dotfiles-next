@@ -5,7 +5,8 @@
 # Env flags:
 #   PRODUCTION=1   -> skip developer tooling (awscli/deno/opentofu/graphviz),
 #                     install essentials only
-#   DOTFILES_ROLE  -> "linuxdev": also install docker + microk8s (needs sudo)
+#   DOTFILES_ROLE  -> "linuxdev": install docker (microk8s is opt-in, see
+#                                 WITH_MICROK8S below). Needs sudo.
 #                     "lite":     low-footprint server. Skips dev tooling AND
 #                                 the heavy apt packages (build-essential,
 #                                 default-jre, perf tools) and kubectl; installs
@@ -16,6 +17,8 @@
 #   NO_SUDO=1      -> never call sudo; skip all steps that require root
 #                     (system apt packages, kubectl to /usr/local/bin). Use on
 #                     machines where you only have your home directory.
+#   WITH_MICROK8S=1-> opt in to microk8s on the linuxdev role (heavy: snap,
+#                     hundreds of MB). Off by default, even for linuxdev.
 #
 # Read-only rootfs (e.g. linuxdev WSL): if `rootfs-rw`/`rootfs-ro` helpers exist
 # and the rootfs is read-only, it is unlocked before sudo installs and re-locked
@@ -221,17 +224,23 @@ install_role_extras() {
 
   # Decide what actually needs installing (both sub-scripts are idempotent, but
   # we check here too so we only unlock the rootfs when there is real work).
+  #   docker   : installed by default for the linuxdev role.
+  #   microk8s : heavy (snap, hundreds of MB). OPT-IN only — set WITH_MICROK8S=1
+  #              to install it. Kept out of the default linuxdev set so a dev box
+  #              does not pay the k8s cost unless it asks for it.
   local sdir="$HOME/.local/share/chezmoi/scripts"
   local need_docker="" need_microk8s=""
   [ -x "$sdir/install_docker.sh" ]   && ! docker version        >/dev/null 2>&1 && need_docker=1
-  [ -x "$sdir/install_microk8s.sh" ] && [ -z "$(snap microk8s --version 2>/dev/null)" ] && need_microk8s=1
+  if [ -n "${WITH_MICROK8S:-}" ]; then
+    [ -x "$sdir/install_microk8s.sh" ] && [ -z "$(snap microk8s --version 2>/dev/null)" ] && need_microk8s=1
+  fi
 
   if [ -z "$need_docker" ] && [ -z "$need_microk8s" ]; then
-    log "docker + microk8s already present; skipping (no rootfs unlock needed)."
+    log "docker present (and microk8s not requested / already present); skipping."
     return 0
   fi
 
-  log "linuxdev role: installing docker + microk8s"
+  log "linuxdev role: installing${need_docker:+ docker}${need_microk8s:+ microk8s}"
   rootfs_ensure_rw                 # unlock only now that we know we must write
   [ -n "$need_microk8s" ] && "$sdir/install_microk8s.sh" || true
   [ -n "$need_docker" ]   && "$sdir/install_docker.sh" || true

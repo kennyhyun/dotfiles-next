@@ -22,7 +22,7 @@ and macOS. Bootstraps a fresh machine with a minimal, modern toolchain.
 | Terminal | Alacritty |
 | CLI | git, git-lfs, ripgrep, fd, jq, httpie, fzf, tailscale |
 | Dev (non-production) | awscli, deno, opentofu, graphviz, Node.js (via fnm) |
-| Linux `linuxdev` role | Docker, microk8s, kubectl |
+| Linux `linuxdev` role | Docker, kubectl (microk8s is opt-in via `WITH_MICROK8S=1`) |
 | Linux `lite` role | Low-footprint server: no dev tooling, no build-essential/JRE/perf/kubectl, **podman** instead of docker, **plugin-free Neovim** (built-in syntax only) |
 
 ## Neovim
@@ -81,8 +81,11 @@ Log out and back in afterwards to pick up the shell and environment.
 # Production server: skip developer tooling
 PRODUCTION=1 chezmoi apply
 
-# Linux dev role: also install Docker + microk8s
+# Linux dev role: install Docker (microk8s is opt-in)
 DOTFILES_ROLE=linuxdev chezmoi apply
+
+# ...with microk8s too (heavy: snap, hundreds of MB)
+DOTFILES_ROLE=linuxdev WITH_MICROK8S=1 chezmoi apply
 
 # Lite server role: low-footprint. Skips dev tooling + heavy apt packages
 # (build-essential, default-jre, perf tools) and kubectl, installs podman
