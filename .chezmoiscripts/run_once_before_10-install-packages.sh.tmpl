@@ -19,6 +19,10 @@
 #                     machines where you only have your home directory.
 #   WITH_MICROK8S=1-> opt in to microk8s on the linuxdev role (heavy: snap,
 #                     hundreds of MB). Off by default, even for linuxdev.
+#   WITH_KIROCREW=1-> opt in to installing Kiro Crew (self-hosted agent
+#                     gateway). Heavy (own venv + ~610MB model). Needs
+#                     KIROCREW_INSTALL_URL set (see scripts/install_kirocrew.sh).
+#                     Off by default on every role.
 #
 # Read-only rootfs (e.g. linuxdev WSL): if `rootfs-rw`/`rootfs-ro` helpers exist
 # and the rootfs is read-only, it is unlocked before sudo installs and re-locked
@@ -291,6 +295,20 @@ set_nvim_profile() {
   fi
 }
 
+# Kiro Crew (self-hosted agent gateway). OPT-IN via WITH_KIROCREW=1 — it is
+# heavy (its own CPython 3.12 venv + a ~610MB embedding model) and not wanted on
+# every box, so it is never installed by default on any role. The sub-script is
+# idempotent (skips if kirocrew is already present) and needs the official
+# installer URL in KIROCREW_INSTALL_URL (it does not hard-code one).
+install_kirocrew() {
+  [ -n "${WITH_KIROCREW:-}" ] || return 0
+  local sdir="$HOME/.local/share/chezmoi/scripts"
+  if [ -x "$sdir/install_kirocrew.sh" ]; then
+    log "WITH_KIROCREW=1: installing Kiro Crew"
+    "$sdir/install_kirocrew.sh" || echo "kiro crew install reported an issue (see output above)."
+  fi
+}
+
 # brew installs to its own prefix and needs no root / no rootfs unlock.
 # System/apt steps unlock the rootfs lazily (only when they have something to
 # install); the EXIT trap set by rootfs_ensure_rw re-locks afterwards.
@@ -302,5 +320,6 @@ install_tailscale
 ensure_brew
 install_brew_packages
 set_nvim_profile
+install_kirocrew
 
 log "Package installation complete."
