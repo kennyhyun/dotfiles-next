@@ -1,0 +1,76 @@
+#!/usr/bin/env bash
+# launch_tmux — attach to the main tmux session, or create it with a preset
+# layout of 9 windows, each starting in its own directory.
+#
+# Behaviour:
+#   - If the session already exists: attach (or switch, if already inside tmux).
+#   - Otherwise: create it, build the 9 windows from PRESETS below, select the
+#     first window, then attach/switch.
+#
+# Customise the layout by editing SESSION and PRESETS. Each PRESETS entry is
+# "name:directory"; ~ and $VARS are expanded. A missing directory falls back to
+# $HOME so the window still opens. Add/remove entries freely — the window count
+# follows the array.
+
+set -euo pipefail
+
+# ---- Config -----------------------------------------------------------------
+SESSION="main"
+
+# Window name : starting directory. Edit these to taste.
+PRESETS=(
+  "home:~"
+  "dotfiles:~/dotfiles"
+  "config:~/.config"
+  "projects:~/projects"
+  "work:~/work"
+  "downloads:~/Downloads"
+  "logs:/var/log"
+  "etc:/etc"
+  "root:/"
+)
+# -----------------------------------------------------------------------------
+
+command -v tmux >/dev/null 2>&1 || { echo "launch_tmux: tmux is not installed" >&2; exit 1; }
+
+# Attach from outside tmux, or switch-client when already inside one.
+attach() {
+  if [ -n "${TMUX:-}" ]; then
+    tmux switch-client -t "$SESSION"
+  else
+    tmux attach-session -t "$SESSION"
+  fi
+}
+
+# Already running? Just attach.
+if tmux has-session -t "$SESSION" 2>/dev/null; then
+  attach
+  exit 0
+fi
+
+# Resolve "~" / "$VARS" in a preset path, falling back to $HOME if it is gone.
+resolve_dir() {
+  local dir
+  dir=$(eval echo "$1")          # expand ~ and any $VARS
+  [ -d "$dir" ] || dir="$HOME"
+  printf '%s' "$dir"
+}
+
+# ---- Build the session ------------------------------------------------------
+first_name="${PRESETS[0]%%:*}"
+first_dir=$(resolve_dir "${PRESETS[0]#*:}")
+
+# Create the session detached with its first window.
+tmux new-session -d -s "$SESSION" -n "$first_name" -c "$first_dir"
+
+# Remaining windows.
+for entry in "${PRESETS[@]:1}"; do
+  name="${entry%%:*}"
+  dir=$(resolve_dir "${entry#*:}")
+  tmux new-window -t "$SESSION" -n "$name" -c "$dir"
+done
+
+# Select the first window (whatever the configured base-index is).
+first_idx=$(tmux list-windows -t "$SESSION" -F '#{window_index}' | head -1)
+tmux select-window -t "$SESSION:$first_idx"
+attach
