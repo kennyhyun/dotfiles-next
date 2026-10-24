@@ -31,6 +31,12 @@
 # or "fg,bg" to set foreground and background
 #     statusbar: white,colour88
 # Colours may be names (red), colourNNN, or #rrggbb. Omit the line for default.
+#
+# Likewise, two optional lines colour the window (tab) list so the current
+# window stands out, also session-local:
+#     window-current:  black,colour39     # the active window/tab
+#     window-inactive: colour244          # the other windows
+# Same "bg" or "fg,bg" value format as statusbar. Omit for tmux defaults.
 
 set -euo pipefail
 
@@ -75,6 +81,11 @@ seed_sample_config() {
     echo "# only). Value is one tmux colour (used as background) or \"fg,bg\"."
     echo "# e.g. 'statusbar: colour24'  or  'statusbar: white,colour88'"
     echo "#statusbar: colour24"
+    echo "#"
+    echo "# Optional: highlight the current window (tab) in the status bar."
+    echo "# Same 'bg' or 'fg,bg' value format as statusbar."
+    echo "#window-current: black,colour39"
+    echo "#window-inactive: colour244"
     echo
     for entry in "${DEFAULT_PRESETS[@]}"; do
       echo "$entry"
@@ -91,18 +102,28 @@ load_presets() {
 
   PRESETS=()
   STATUSBAR=""
-  local line name dir
+  WINDOW_CURRENT=""
+  WINDOW_INACTIVE=""
+  local line key val
   while IFS= read -r line || [ -n "$line" ]; do
     line="${line#"${line%%[![:space:]]*}"}"   # ltrim
     [ -z "$line" ] && continue                 # skip blank
     [ "${line:0:1}" = "#" ] && continue        # skip comment
-    # Special directive: statusbar: <style>
-    if [[ "$line" == statusbar:* ]]; then
-      STATUSBAR="${line#statusbar:}"
-      STATUSBAR="${STATUSBAR#"${STATUSBAR%%[![:space:]]*}"}"   # ltrim value
-      STATUSBAR="${STATUSBAR%"${STATUSBAR##*[![:space:]]}"}"   # rtrim value
-      continue
-    fi
+    # Special style directives: "<key>: <style>"
+    case "$line" in
+      statusbar:*|window-current:*|window-inactive:*)
+        key="${line%%:*}"
+        val="${line#*:}"
+        val="${val#"${val%%[![:space:]]*}"}"   # ltrim value
+        val="${val%"${val##*[![:space:]]}"}"   # rtrim value
+        case "$key" in
+          statusbar)        STATUSBAR="$val" ;;
+          window-current)   WINDOW_CURRENT="$val" ;;
+          window-inactive)  WINDOW_INACTIVE="$val" ;;
+        esac
+        continue
+        ;;
+    esac
     [[ "$line" == *:* ]] || continue           # need "name:dir"
     PRESETS+=("$line")
   done < "$CONFIG"
@@ -121,19 +142,24 @@ resolve_dir() {
   printf '%s' "$dir"
 }
 
-# Apply $STATUSBAR to this session's status bar only. Accepts "bg" or "fg,bg".
-apply_statusbar() {
-  [ -n "${STATUSBAR:-}" ] || return 0
-  local fg bg style
-  if [[ "$STATUSBAR" == *,* ]]; then
-    fg="${STATUSBAR%%,*}"
-    bg="${STATUSBAR#*,}"
-    style="fg=${fg// /},bg=${bg// /}"
+# Convert a "bg" or "fg,bg" value into a tmux style string ("bg=..." / "fg=...,bg=...").
+style_str() {
+  local v="$1" fg bg
+  if [[ "$v" == *,* ]]; then
+    fg="${v%%,*}"; bg="${v#*,}"
+    printf 'fg=%s,bg=%s' "${fg// /}" "${bg// /}"
   else
-    style="bg=${STATUSBAR// /}"
+    printf 'bg=%s' "${v// /}"
   fi
-  # -t SESSION keeps this session-local; other sessions are unaffected.
-  tmux set-option -t "$SESSION" status-style "$style"
+}
+
+# Apply the parsed style directives to THIS session only (other sessions keep
+# their own). Each is skipped when its directive was not set.
+apply_styles() {
+  [ -n "${STATUSBAR:-}" ]        && tmux set-option -t "$SESSION" status-style                "$(style_str "$STATUSBAR")"
+  [ -n "${WINDOW_CURRENT:-}" ]   && tmux set-option -t "$SESSION" window-status-current-style  "$(style_str "$WINDOW_CURRENT")"
+  [ -n "${WINDOW_INACTIVE:-}" ]  && tmux set-option -t "$SESSION" window-status-style           "$(style_str "$WINDOW_INACTIVE")"
+  return 0
 }
 
 # Attach from outside tmux, or switch-client when already inside one.
@@ -167,5 +193,5 @@ done
 # Select the first window (whatever the configured base-index is).
 first_idx=$(tmux list-windows -t "$SESSION" -F '#{window_index}' | head -1)
 tmux select-window -t "$SESSION:$first_idx"
-apply_statusbar
+apply_styles
 attach
