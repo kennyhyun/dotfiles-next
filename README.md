@@ -96,8 +96,19 @@ DOTFILES_ROLE=lite chezmoi apply
 # load. On Debian with Secure Boot on, the DKMS key must be enrolled once
 # (one reboot, console access); the check prints the steps if so.
 # Re-run the check any time, e.g. before `zpool import`:
-#   ~/.local/share/chezmoi/scripts/zfs_check.sh
+#   "$(chezmoi source-path)/scripts/zfs_check.sh"
 WITH_ZFS=1 chezmoi apply
+
+# Security tooling (all opt-in; Linux only; need sudo). Each is idempotent.
+#   WITH_CLAMAV=1   on-demand malware scanner (detects Win + Linux sigs).
+#                   Installs clamscan + freshclam (no resident daemon).
+#                   Scan a disk:  clamscan -r --infected /mnt/disk1
+#   WITH_TRIVY=1    CVE / misconfig / secret scanner (NOT a malware scanner).
+#                   Scan a project:  trivy fs .
+#   WITH_SURICATA=1 network IDS. Installs + fetches rules but does NOT start
+#                   monitoring (the interface to watch is host-specific).
+#                   Start it:  sudo suricata -i <iface> -D
+WITH_CLAMAV=1 WITH_TRIVY=1 WITH_SURICATA=1 chezmoi apply
 
 # No root available: install everything user-local via Homebrew,
 # skip apt packages / chsh

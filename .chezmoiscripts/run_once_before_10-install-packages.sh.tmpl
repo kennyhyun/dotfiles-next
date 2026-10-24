@@ -238,7 +238,7 @@ install_role_extras() {
   #   microk8s : heavy (snap, hundreds of MB). OPT-IN only — set WITH_MICROK8S=1
   #              to install it. Kept out of the default linuxdev set so a dev box
   #              does not pay the k8s cost unless it asks for it.
-  local sdir="$HOME/.local/share/chezmoi/scripts"
+  local sdir="{{ .chezmoi.sourceDir }}/scripts"
   local need_docker="" need_microk8s=""
   [ -x "$sdir/install_docker.sh" ]   && ! docker version        >/dev/null 2>&1 && need_docker=1
   if [ -n "${WITH_MICROK8S:-}" ]; then
@@ -282,7 +282,7 @@ install_tailscale() {
   fi
   log "Installing tailscale (systemd service)"
   rootfs_ensure_rw                 # unlock only now that we know we must write
-  local sdir="$HOME/.local/share/chezmoi/scripts"
+  local sdir="{{ .chezmoi.sourceDir }}/scripts"
   [ -x "$sdir/install_tailscale.sh" ] && "$sdir/install_tailscale.sh" || true
 }
 
@@ -294,7 +294,7 @@ install_tailscale() {
 install_zfs() {
   [ -n "${WITH_ZFS:-}" ] || return 0
   [ "$OS" = "Linux" ] || return 0
-  local sdir="$HOME/.local/share/chezmoi/scripts"
+  local sdir="{{ .chezmoi.sourceDir }}/scripts"
   if ! command -v zpool >/dev/null 2>&1; then
     if ! have_sudo; then
       log "WITH_ZFS=1 but no sudo: skipping zfsutils-linux."
@@ -310,6 +310,35 @@ install_zfs() {
     log "Checking that the ZFS kernel module can load"
     "$sdir/zfs_check.sh" || echo "  (ZFS needs the step above before 'zpool import' works.)"
   fi
+}
+
+# Security tooling. All three are OPT-IN (heavy and/or box-specific) and never
+# installed by default on any role. Each sub-script is idempotent.
+#   WITH_CLAMAV=1   : on-demand malware scanner (Win+Linux sigs). clamscan.
+#   WITH_TRIVY=1    : CVE / misconfig / secret scanner (NOT malware). trivy.
+#   WITH_SURICATA=1 : network IDS. Installs + fetches rules but does NOT start
+#                     monitoring (the interface to watch is host-specific).
+install_security_tools() {
+  [ "$OS" = "Linux" ] || return 0
+  local sdir="{{ .chezmoi.sourceDir }}/scripts"
+  local need_clamav="" need_trivy="" need_suricata=""
+  [ -n "${WITH_CLAMAV:-}" ]   && ! command -v clamscan >/dev/null 2>&1 && need_clamav=1
+  [ -n "${WITH_TRIVY:-}" ]    && ! command -v trivy    >/dev/null 2>&1 && need_trivy=1
+  [ -n "${WITH_SURICATA:-}" ] && ! command -v suricata >/dev/null 2>&1 && need_suricata=1
+
+  if [ -z "$need_clamav" ] && [ -z "$need_trivy" ] && [ -z "$need_suricata" ]; then
+    return 0
+  fi
+  if ! have_sudo; then
+    log "security tools requested but no sudo: skipping clamav/trivy/suricata."
+    return 0
+  fi
+
+  log "installing security tools:${need_clamav:+ clamav}${need_trivy:+ trivy}${need_suricata:+ suricata}"
+  rootfs_ensure_rw                 # unlock only now that we know we must write
+  [ -n "$need_clamav" ]   && [ -x "$sdir/install_clamav.sh" ]   && "$sdir/install_clamav.sh"   || true
+  [ -n "$need_trivy" ]    && [ -x "$sdir/install_trivy.sh" ]    && "$sdir/install_trivy.sh"    || true
+  [ -n "$need_suricata" ] && [ -x "$sdir/install_suricata.sh" ] && "$sdir/install_suricata.sh" || true
 }
 
 # Neovim runs plugin-free on the lite role. We drop a marker file that
@@ -334,7 +363,7 @@ set_nvim_profile() {
 # installer URL in KIROCREW_INSTALL_URL (it does not hard-code one).
 install_kirocrew() {
   [ -n "${WITH_KIROCREW:-}" ] || return 0
-  local sdir="$HOME/.local/share/chezmoi/scripts"
+  local sdir="{{ .chezmoi.sourceDir }}/scripts"
   if [ -x "$sdir/install_kirocrew.sh" ]; then
     log "WITH_KIROCREW=1: installing Kiro Crew"
     "$sdir/install_kirocrew.sh" || echo "kiro crew install reported an issue (see output above)."
@@ -349,6 +378,7 @@ install_role_extras
 install_lite_extras
 install_tailscale
 install_zfs
+install_security_tools
 
 ensure_brew
 install_brew_packages
