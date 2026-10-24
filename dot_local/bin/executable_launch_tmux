@@ -1,24 +1,31 @@
 #!/usr/bin/env bash
 # launch_tmux — attach to the main tmux session, or create it with a preset
-# layout of 9 windows, each starting in its own directory.
+# layout of windows, each starting in its own directory.
 #
 # Behaviour:
 #   - If the session already exists: attach (or switch, if already inside tmux).
-#   - Otherwise: create it, build the 9 windows from PRESETS below, select the
-#     first window, then attach/switch.
+#   - Otherwise: create it, build one window per preset, select the first, then
+#     attach/switch.
 #
-# Customise the layout by editing SESSION and PRESETS. Each PRESETS entry is
-# "name:directory"; ~ and $VARS are expanded. A missing directory falls back to
-# $HOME so the window still opens. Add/remove entries freely — the window count
-# follows the array.
+# PRESETS ARE PER-MACHINE CONFIG, NOT PART OF THIS SCRIPT.
+# They live in a plain file that this script does NOT track in dotfiles:
+#
+#   ~/.config/launch_tmux/presets      (override with $LAUNCH_TMUX_PRESETS)
+#
+# On first run the file does not exist, so this script writes a commented
+# sample there and tells you where it is — edit it freely per machine, it will
+# never be overwritten or committed. One "name:directory" per line; blank lines
+# and lines starting with '#' are ignored; ~ and $VARS are expanded; a missing
+# directory falls back to $HOME so the window still opens. If the file ends up
+# empty, the built-in defaults below are used.
 
 set -euo pipefail
 
-# ---- Config -----------------------------------------------------------------
-SESSION="main"
+SESSION="${LAUNCH_TMUX_SESSION:-main}"
+CONFIG="${LAUNCH_TMUX_PRESETS:-${XDG_CONFIG_HOME:-$HOME/.config}/launch_tmux/presets}"
 
-# Window name : starting directory. Edit these to taste.
-PRESETS=(
+# Built-in fallback, also used as the seeded sample's contents.
+DEFAULT_PRESETS=(
   "home:~"
   "dotfiles:~/dotfiles"
   "config:~/.config"
@@ -29,9 +36,54 @@ PRESETS=(
   "etc:/etc"
   "root:/"
 )
-# -----------------------------------------------------------------------------
 
 command -v tmux >/dev/null 2>&1 || { echo "launch_tmux: tmux is not installed" >&2; exit 1; }
+
+# Write a commented sample config the first time, so the user has something to edit.
+seed_sample_config() {
+  mkdir -p "$(dirname "$CONFIG")"
+  {
+    echo "# launch_tmux presets — one window per line, as \"name:directory\"."
+    echo "# Blank lines and #-comments are ignored. ~ and \$VARS are expanded."
+    echo "# A directory that does not exist falls back to \$HOME."
+    echo "# This file is per-machine and is NOT managed by dotfiles/chezmoi."
+    echo
+    for entry in "${DEFAULT_PRESETS[@]}"; do
+      echo "$entry"
+    done
+  } > "$CONFIG"
+}
+
+# Load PRESETS from CONFIG (seeding a sample if absent); fall back to defaults.
+load_presets() {
+  if [ ! -f "$CONFIG" ]; then
+    seed_sample_config
+    echo "launch_tmux: created sample preset file at $CONFIG — edit it to taste." >&2
+  fi
+
+  PRESETS=()
+  local line name dir
+  while IFS= read -r line || [ -n "$line" ]; do
+    line="${line#"${line%%[![:space:]]*}"}"   # ltrim
+    [ -z "$line" ] && continue                 # skip blank
+    [ "${line:0:1}" = "#" ] && continue        # skip comment
+    [[ "$line" == *:* ]] || continue           # need "name:dir"
+    PRESETS+=("$line")
+  done < "$CONFIG"
+
+  # Empty/garbage config -> built-in defaults so we always open something.
+  if [ "${#PRESETS[@]}" -eq 0 ]; then
+    PRESETS=("${DEFAULT_PRESETS[@]}")
+  fi
+}
+
+# Resolve "~" / "$VARS" in a preset path, falling back to $HOME if it is gone.
+resolve_dir() {
+  local dir
+  dir=$(eval echo "$1")
+  [ -d "$dir" ] || dir="$HOME"
+  printf '%s' "$dir"
+}
 
 # Attach from outside tmux, or switch-client when already inside one.
 attach() {
@@ -48,22 +100,13 @@ if tmux has-session -t "$SESSION" 2>/dev/null; then
   exit 0
 fi
 
-# Resolve "~" / "$VARS" in a preset path, falling back to $HOME if it is gone.
-resolve_dir() {
-  local dir
-  dir=$(eval echo "$1")          # expand ~ and any $VARS
-  [ -d "$dir" ] || dir="$HOME"
-  printf '%s' "$dir"
-}
-
 # ---- Build the session ------------------------------------------------------
+load_presets
+
 first_name="${PRESETS[0]%%:*}"
 first_dir=$(resolve_dir "${PRESETS[0]#*:}")
-
-# Create the session detached with its first window.
 tmux new-session -d -s "$SESSION" -n "$first_name" -c "$first_dir"
 
-# Remaining windows.
 for entry in "${PRESETS[@]:1}"; do
   name="${entry%%:*}"
   dir=$(resolve_dir "${entry#*:}")
