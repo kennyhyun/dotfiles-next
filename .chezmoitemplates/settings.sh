@@ -5,6 +5,8 @@
 # Names: DOTFILES_ROLE, DOTFILES_PRODUCTION, DOTFILES_NO_SUDO,
 #        DOTFILES_WITH_MICROK8S / _KIROCREW / _ZFS / _CLAMAV / _TRIVY / _SURICATA
 #        DOTFILES_WITH_SECURITY  (umbrella: clamav + trivy + suricata + osv-scanner)
+#        DOTFILES_WITH_COCKPIT / _SAMBA / _NFS
+#        DOTFILES_WITH_NAS       (umbrella: cockpit + samba + nfs)
 # The old unprefixed names (PRODUCTION, NO_SUDO, WITH_*) are still read, with a
 # deprecation warning. After this block the script sees ROLE and PRODUCTION /
 # NO_SUDO / WITH_* as plain variables, empty when off and "1" when on.
@@ -58,5 +60,13 @@ WITH_SECURITY="$(_dotfiles_bool "$(_dotfiles_get WITH_SECURITY '' '{{ get . "wit
 # with_security is the umbrella switch: it turns on every security tool.
 if [ -n "$WITH_SECURITY" ]; then
   WITH_CLAMAV=1; WITH_TRIVY=1; WITH_SURICATA=1
+fi
+WITH_COCKPIT="$(_dotfiles_bool "$(_dotfiles_get WITH_COCKPIT WITH_COCKPIT '{{ get . "with_cockpit" }}')")"
+WITH_SAMBA="$(_dotfiles_bool "$(_dotfiles_get WITH_SAMBA WITH_SAMBA '{{ get . "with_samba" }}')")"
+WITH_NFS="$(_dotfiles_bool "$(_dotfiles_get WITH_NFS WITH_NFS '{{ get . "with_nfs" }}')")"
+WITH_NAS="$(_dotfiles_bool "$(_dotfiles_get WITH_NAS '' '{{ get . "with_nas" }}')")"
+# with_nas is the umbrella switch: it turns on the whole NAS share stack.
+if [ -n "$WITH_NAS" ]; then
+  WITH_COCKPIT=1; WITH_SAMBA=1; WITH_NFS=1
 fi
 ACCEPT_CHANGE="$(_dotfiles_bool "${DOTFILES_ACCEPT_CHANGE:-}")"

@@ -46,6 +46,17 @@
 #                     (one reboot, console access). After installing, the
 #                     script runs scripts/zfs_check.sh, which prints the steps
 #                     if that is still needed. Off by default on every role.
+#   WITH_NAS=1     -> umbrella for the NAS share stack: turns on WITH_COCKPIT,
+#                     WITH_SAMBA and WITH_NFS. Off by default on every role.
+#   WITH_COCKPIT=1 -> opt in to Cockpit, a light socket-activated web admin UI
+#                     (+ cockpit-file-sharing, the Samba/NFS share manager).
+#                     https://<host>:9090. Needs sudo. Off by default.
+#   WITH_SAMBA=1   -> opt in to the Samba (SMB/CIFS) server for mixed-client
+#                     (Windows/macOS/Linux) shares. Installs the service only;
+#                     defines no shares. Needs sudo. Off by default.
+#   WITH_NFS=1     -> opt in to the NFS kernel server for Linux/Unix-native
+#                     shares. Installs the service only; defines no exports.
+#                     Needs sudo. Off by default.
 #
 # Read-only rootfs (e.g. linuxdev WSL): if `rootfs-rw`/`rootfs-ro` helpers exist
 # and the rootfs is read-only, it is unlocked before sudo installs and re-locked
@@ -416,6 +427,37 @@ install_security_tools() {
   [ -n "$need_suricata" ] && [ -x "$sdir/install_suricata.sh" ] && "$sdir/install_suricata.sh" || true
 }
 
+# NAS share stack. All OPT-IN (WITH_NAS umbrella, or the individual switches)
+# and never installed by default on any role. Each sub-script is idempotent and
+# installs the service only -- it defines NO shares/exports, because a share
+# path is host-specific (usually a ZFS dataset). Manage shares afterwards from
+# the Cockpit File Sharing web UI, or by hand in smb.conf / /etc/exports.
+#   WITH_COCKPIT=1 : light web admin UI + cockpit-file-sharing (share manager).
+#   WITH_SAMBA=1   : SMB/CIFS server for mixed Windows/macOS/Linux clients.
+#   WITH_NFS=1     : NFS kernel server for Linux/Unix-native clients.
+install_nas() {
+  [ "$OS" = "Linux" ] || return 0
+  local sdir="{{ .chezmoi.sourceDir }}/scripts"
+  local need_cockpit="" need_samba="" need_nfs=""
+  [ -n "${WITH_COCKPIT:-}" ] && ! command -v cockpit-bridge >/dev/null 2>&1 && need_cockpit=1
+  [ -n "${WITH_SAMBA:-}" ]   && ! command -v smbd           >/dev/null 2>&1 && need_samba=1
+  [ -n "${WITH_NFS:-}" ]     && ! dpkg -s nfs-kernel-server  >/dev/null 2>&1 && need_nfs=1
+
+  if [ -z "$need_cockpit" ] && [ -z "$need_samba" ] && [ -z "$need_nfs" ]; then
+    return 0
+  fi
+  if ! have_sudo; then
+    log "NAS stack requested but no sudo: skipping cockpit/samba/nfs."
+    return 0
+  fi
+
+  log "installing NAS stack:${need_cockpit:+ cockpit}${need_samba:+ samba}${need_nfs:+ nfs}"
+  rootfs_ensure_rw                 # unlock only now that we know we must write
+  [ -n "$need_cockpit" ] && [ -x "$sdir/install_cockpit.sh" ] && "$sdir/install_cockpit.sh" || true
+  [ -n "$need_samba" ]   && [ -x "$sdir/install_samba.sh" ]   && "$sdir/install_samba.sh"   || true
+  [ -n "$need_nfs" ]     && [ -x "$sdir/install_nfs.sh" ]     && "$sdir/install_nfs.sh"     || true
+}
+
 # Neovim runs plugin-free on the lite role. We drop a marker file that
 # init.lua checks; when present it skips the lazy.nvim bootstrap entirely, so
 # no third-party plugins are cloned/compiled (smaller footprint + no plugin
@@ -454,6 +496,7 @@ install_lite_extras
 install_tailscale
 install_zfs
 install_security_tools
+install_nas
 
 ensure_brew
 install_brew_packages

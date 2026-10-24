@@ -93,6 +93,10 @@ the file from `.chezmoi.toml.tmpl`; the other keys default to `false`.
   with_trivy    = false
   with_suricata = false
   with_security = false        # umbrella: clamav + trivy + suricata + osv-scanner
+  with_cockpit  = false        # light web admin UI (+ file-sharing) on :9090
+  with_samba    = false        # SMB/CIFS server (mixed Win/mac/Linux clients)
+  with_nfs      = false        # NFS kernel server (Linux/Unix clients)
+  with_nas      = false        # umbrella: cockpit + samba + nfs
 ```
 
 | Role | Installs |

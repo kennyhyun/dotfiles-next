@@ -16,3 +16,7 @@ sourceDir = {{ .chezmoi.sourceDir | quote }}
   with_trivy    = {{ get . "with_trivy" | default false }}
   with_suricata = {{ get . "with_suricata" | default false }}
   with_security = {{ get . "with_security" | default false }}
+  with_cockpit  = {{ get . "with_cockpit" | default false }}
+  with_samba    = {{ get . "with_samba" | default false }}
+  with_nfs      = {{ get . "with_nfs" | default false }}
+  with_nas      = {{ get . "with_nas" | default false }}
