@@ -5,7 +5,10 @@
 # Settings. Keep them in ~/.config/chezmoi/chezmoi.toml under [data]:
 #   role = "base" | "linuxdev" | "lite"
 #   production, no_sudo, with_microk8s, with_kirocrew, with_zfs, with_clamav,
-#   with_trivy, with_suricata   (true / false)
+#   with_trivy, with_suricata, with_security   (true / false)
+# with_security is an umbrella: it turns on clamav, trivy and suricata, and
+# installs osv-scanner even on roles without dev tooling. osv-scanner is
+# otherwise installed by default with dev tooling.
 # A DOTFILES_<NAME> environment variable (DOTFILES_ROLE, DOTFILES_NO_SUDO,
 # DOTFILES_WITH_ZFS, ...) overrides the file for one run. The old unprefixed
 # names (PRODUCTION, NO_SUDO, WITH_*) still work but print a warning.
@@ -264,6 +267,13 @@ install_brew_packages() {
   # is treated as dev tooling: a production / lite server gets no Node runtime.
   if [ -z "$SKIP_DEVTOOLS" ]; then
     brew install fnm awscli deno opentofu graphviz
+  fi
+  # osv-scanner: scans lockfiles for known vulnerabilities AND known malicious
+  # packages (OSV + OpenSSF malicious-packages feed). A single user-local
+  # binary, no daemon, no root. Installed with dev tooling by default, and on
+  # every role (lite / production too) when with_security is on.
+  if [ -z "$SKIP_DEVTOOLS" ] || [ -n "${WITH_SECURITY:-}" ]; then
+    brew install osv-scanner
   fi
 }
 

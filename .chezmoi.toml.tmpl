@@ -15,3 +15,4 @@ sourceDir = {{ .chezmoi.sourceDir | quote }}
   with_clamav   = {{ get . "with_clamav" | default false }}
   with_trivy    = {{ get . "with_trivy" | default false }}
   with_suricata = {{ get . "with_suricata" | default false }}
+  with_security = {{ get . "with_security" | default false }}

@@ -4,6 +4,7 @@
 #
 # Names: DOTFILES_ROLE, DOTFILES_PRODUCTION, DOTFILES_NO_SUDO,
 #        DOTFILES_WITH_MICROK8S / _KIROCREW / _ZFS / _CLAMAV / _TRIVY / _SURICATA
+#        DOTFILES_WITH_SECURITY  (umbrella: clamav + trivy + suricata + osv-scanner)
 # The old unprefixed names (PRODUCTION, NO_SUDO, WITH_*) are still read, with a
 # deprecation warning. After this block the script sees ROLE and PRODUCTION /
 # NO_SUDO / WITH_* as plain variables, empty when off and "1" when on.
@@ -53,4 +54,9 @@ WITH_ZFS="$(_dotfiles_bool "$(_dotfiles_get WITH_ZFS WITH_ZFS '{{ get . "with_zf
 WITH_CLAMAV="$(_dotfiles_bool "$(_dotfiles_get WITH_CLAMAV WITH_CLAMAV '{{ get . "with_clamav" }}')")"
 WITH_TRIVY="$(_dotfiles_bool "$(_dotfiles_get WITH_TRIVY WITH_TRIVY '{{ get . "with_trivy" }}')")"
 WITH_SURICATA="$(_dotfiles_bool "$(_dotfiles_get WITH_SURICATA WITH_SURICATA '{{ get . "with_suricata" }}')")"
+WITH_SECURITY="$(_dotfiles_bool "$(_dotfiles_get WITH_SECURITY '' '{{ get . "with_security" }}')")"
+# with_security is the umbrella switch: it turns on every security tool.
+if [ -n "$WITH_SECURITY" ]; then
+  WITH_CLAMAV=1; WITH_TRIVY=1; WITH_SURICATA=1
+fi
 ACCEPT_CHANGE="$(_dotfiles_bool "${DOTFILES_ACCEPT_CHANGE:-}")"

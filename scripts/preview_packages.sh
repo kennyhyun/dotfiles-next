@@ -55,6 +55,11 @@ resolve_flags() {
   [ -n "$ROLE" ] || ROLE=base
   PRODUCTION="$(_pv_bool PRODUCTION PRODUCTION production)"
   WITH_ZFS="$(_pv_bool WITH_ZFS WITH_ZFS with_zfs)"
+  WITH_SECURITY="$(_pv_bool WITH_SECURITY '' with_security)"
+  WITH_CLAMAV="$(_pv_bool WITH_CLAMAV WITH_CLAMAV with_clamav)"
+  WITH_TRIVY="$(_pv_bool WITH_TRIVY WITH_TRIVY with_trivy)"
+  WITH_SURICATA="$(_pv_bool WITH_SURICATA WITH_SURICATA with_suricata)"
+  if [ -n "$WITH_SECURITY" ]; then WITH_CLAMAV=1; WITH_TRIVY=1; WITH_SURICATA=1; fi
   SKIP_DEVTOOLS=""
   [ -n "$PRODUCTION" ] && SKIP_DEVTOOLS=1
   LITE=""
@@ -72,7 +77,7 @@ APT_HEAVY="build-essential PERF_PKG python3-pip python3-venv pipx default-jre xc
 
 BREW_CORE="neovim tmux zsh zsh-autosuggestions zsh-syntax-highlighting ripgrep fd jq git-lfs httpie fzf"
 BREW_KUBECTL="kubernetes-cli"
-BREW_DEVEXTRAS="fnm awscli deno opentofu graphviz"
+BREW_DEVEXTRAS="fnm awscli deno opentofu graphviz osv-scanner"
 APT_ZFS="zfsutils-linux"
 
 # perf package depends on distro; show both possibilities in the preview.
@@ -99,6 +104,8 @@ compute() {
   local brew="$BREW_CORE"
   [ -z "$LITE" ] && brew="$brew $BREW_KUBECTL"
   [ -z "$SKIP_DEVTOOLS" ] && brew="$brew $BREW_DEVEXTRAS"
+  # with_security installs osv-scanner even where dev tooling is skipped.
+  [ -n "$SKIP_DEVTOOLS" ] && [ -n "$WITH_SECURITY" ] && brew="$brew osv-scanner"
   BREW_OUT="$brew"
 
   # ---- containers / role extras ----
@@ -119,6 +126,19 @@ compute() {
     TAILSCALE_OUT="(skipped on Linux without sudo; run scripts/install_tailscale.sh later)"
   else
     TAILSCALE_OUT="tailscale (always; official installer + systemd service)"
+  fi
+
+  # ---- security tools (opt-in; osv-scanner is in the brew list above) ----
+  local sec=""
+  [ -n "$WITH_CLAMAV" ]   && sec="$sec clamav"
+  [ -n "$WITH_TRIVY" ]    && sec="$sec trivy"
+  [ -n "$WITH_SURICATA" ] && sec="$sec suricata"
+  if [ -z "$sec" ]; then
+    SECURITY_OUT="(none — opt-in with with_security, or with_clamav / with_trivy / with_suricata)"
+  elif [ -n "$NO_SUDO_FLAG" ]; then
+    SECURITY_OUT="(requested:$sec but NO_SUDO: skipped)"
+  else
+    SECURITY_OUT="${sec# } (apt / vendor installers via scripts/install_*.sh)"
   fi
 
   # ---- zfs (opt-in) ----
@@ -162,6 +182,8 @@ print_report() {
   printf '  %s\n\n' "$TAILSCALE_OUT"
   printf '\033[1;34mzfs (opt-in WITH_ZFS=1):\033[0m\n'
   printf '  %s\n\n' "$ZFS_OUT"
+  printf '\033[1;34msecurity tools (opt-in):\033[0m\n'
+  printf '  %s\n\n' "$SECURITY_OUT"
   printf '\033[1;34mnode / npm (after-setup):\033[0m\n'
   printf '  %s\n\n' "$NODE_OUT"
   printf '\033[1;34mneovim profile:\033[0m\n'
@@ -177,8 +199,8 @@ print_all() {
     "no-sudo:DOTFILES_NO_SUDO=1"; do
     local label="${combo%%:*}" env="${combo#*:}"
     printf '\n\033[1;33m########## %s  (%s) ##########\033[0m\n' "$label" "${env:-defaults}"
-    ( unset DOTFILES_ROLE DOTFILES_PRODUCTION DOTFILES_NO_SUDO DOTFILES_WITH_ZFS \
-            PRODUCTION NO_SUDO WITH_ZFS
+    ( unset DOTFILES_ROLE DOTFILES_PRODUCTION DOTFILES_NO_SUDO DOTFILES_WITH_ZFS DOTFILES_WITH_SECURITY \
+            PRODUCTION NO_SUDO WITH_ZFS WITH_CLAMAV WITH_TRIVY WITH_SURICATA
       export DOTFILES_PREVIEW_IGNORE_CONFIG=1
       [ -n "$env" ] && export "${env?}"
       print_report )

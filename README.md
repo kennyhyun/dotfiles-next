@@ -92,6 +92,7 @@ the file from `.chezmoi.toml.tmpl`; the other keys default to `false`.
   with_clamav   = false
   with_trivy    = false
   with_suricata = false
+  with_security = false        # umbrella: clamav + trivy + suricata + osv-scanner
 ```
 
 | Role | Installs |
@@ -127,7 +128,13 @@ Extra notes on the opt-ins:
   On Debian with Secure Boot on, the DKMS key must be enrolled once (one
   reboot, console access); the check prints the steps if so. Re-run it any
   time, e.g. before `zpool import`: `"$(chezmoi source-path)/scripts/zfs_check.sh"`
-- Security tooling (Linux only; needs sudo; each is idempotent):
+- Security tooling. `osv-scanner` is installed by default with dev tooling (one
+  user-local binary, no daemon): it scans lockfiles for known vulnerabilities
+  and known malicious packages (OSV + the OpenSSF malicious-packages feed):
+  `osv-scanner scan source -r .` Only already-reported packages are caught.
+  `with_security = true` turns on everything at once: the three tools below plus
+  `osv-scanner` even on `lite` / `production`. Each tool can also be enabled on
+  its own (Linux only; needs sudo; idempotent):
   `with_clamav` (on-demand malware scanner: `clamscan -r --infected /mnt/disk1`),
   `with_trivy` (CVE / misconfig / secret scanner: `trivy fs .`), `with_suricata`
   (network IDS; installs + fetches rules but does NOT start monitoring: start it
