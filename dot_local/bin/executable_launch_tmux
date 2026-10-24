@@ -18,6 +18,15 @@
 # and lines starting with '#' are ignored; ~ and $VARS are expanded; a missing
 # directory falls back to $HOME so the window still opens. If the file ends up
 # empty, the built-in defaults below are used.
+#
+# A special line "statusbar: <style>" (anywhere in the file) sets this session's
+# status bar colour, applied only to this session so other sessions keep theirs.
+# <style> is either one tmux colour applied as the background
+#     statusbar: colour24
+#     statusbar: #5f87af
+# or "fg,bg" to set foreground and background
+#     statusbar: white,colour88
+# Colours may be names (red), colourNNN, or #rrggbb. Omit the line for default.
 
 set -euo pipefail
 
@@ -47,6 +56,11 @@ seed_sample_config() {
     echo "# Blank lines and #-comments are ignored. ~ and \$VARS are expanded."
     echo "# A directory that does not exist falls back to \$HOME."
     echo "# This file is per-machine and is NOT managed by dotfiles/chezmoi."
+    echo "#"
+    echo "# Optional: colour this session's status bar (applies to this session"
+    echo "# only). Value is one tmux colour (used as background) or \"fg,bg\"."
+    echo "# e.g. 'statusbar: colour24'  or  'statusbar: white,colour88'"
+    echo "#statusbar: colour24"
     echo
     for entry in "${DEFAULT_PRESETS[@]}"; do
       echo "$entry"
@@ -62,11 +76,19 @@ load_presets() {
   fi
 
   PRESETS=()
+  STATUSBAR=""
   local line name dir
   while IFS= read -r line || [ -n "$line" ]; do
     line="${line#"${line%%[![:space:]]*}"}"   # ltrim
     [ -z "$line" ] && continue                 # skip blank
     [ "${line:0:1}" = "#" ] && continue        # skip comment
+    # Special directive: statusbar: <style>
+    if [[ "$line" == statusbar:* ]]; then
+      STATUSBAR="${line#statusbar:}"
+      STATUSBAR="${STATUSBAR#"${STATUSBAR%%[![:space:]]*}"}"   # ltrim value
+      STATUSBAR="${STATUSBAR%"${STATUSBAR##*[![:space:]]}"}"   # rtrim value
+      continue
+    fi
     [[ "$line" == *:* ]] || continue           # need "name:dir"
     PRESETS+=("$line")
   done < "$CONFIG"
@@ -83,6 +105,21 @@ resolve_dir() {
   dir=$(eval echo "$1")
   [ -d "$dir" ] || dir="$HOME"
   printf '%s' "$dir"
+}
+
+# Apply $STATUSBAR to this session's status bar only. Accepts "bg" or "fg,bg".
+apply_statusbar() {
+  [ -n "${STATUSBAR:-}" ] || return 0
+  local fg bg style
+  if [[ "$STATUSBAR" == *,* ]]; then
+    fg="${STATUSBAR%%,*}"
+    bg="${STATUSBAR#*,}"
+    style="fg=${fg// /},bg=${bg// /}"
+  else
+    style="bg=${STATUSBAR// /}"
+  fi
+  # -t SESSION keeps this session-local; other sessions are unaffected.
+  tmux set-option -t "$SESSION" status-style "$style"
 }
 
 # Attach from outside tmux, or switch-client when already inside one.
@@ -116,4 +153,5 @@ done
 # Select the first window (whatever the configured base-index is).
 first_idx=$(tmux list-windows -t "$SESSION" -F '#{window_index}' | head -1)
 tmux select-window -t "$SESSION:$first_idx"
+apply_statusbar
 attach
