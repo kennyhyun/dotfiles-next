@@ -57,6 +57,22 @@ autoload -Uz edit-command-line
 zle -N edit-command-line
 bindkey '^X^E' edit-command-line
 
+# ---- Up/Down: prefix history search (what oh-my-zsh used to bind) ----
+# Type part of a command, press Up, and only matching earlier commands appear
+# (cursor stays put). zsh's default up-line-or-history just walks history with
+# no prefix match; up-line-or-beginning-search gives the expected behaviour.
+autoload -Uz up-line-or-beginning-search down-line-or-beginning-search
+zle -N up-line-or-beginning-search
+zle -N down-line-or-beginning-search
+# Bind terminfo codes (what the terminal actually sends) and the common
+# fallbacks, so it works in tmux, raw consoles and across terminals.
+bindkey "${terminfo[kcuu1]:-^[[A}" up-line-or-beginning-search     # Up
+bindkey "${terminfo[kcud1]:-^[[B}" down-line-or-beginning-search   # Down
+bindkey '^[[A' up-line-or-beginning-search
+bindkey '^[[B' down-line-or-beginning-search
+bindkey '^[OA' up-line-or-beginning-search    # application-mode cursor keys
+bindkey '^[OB' down-line-or-beginning-search
+
 # ---- ZFS: check the kernel module can load before `zpool import` ----
 # On Debian the ZFS module is built by DKMS; with Secure Boot on it will not
 # load until the DKMS key is enrolled. Before `zpool import` (also via
