@@ -45,6 +45,7 @@ APT_HEAVY="build-essential PERF_PKG python3-pip python3-venv pipx default-jre xc
 BREW_CORE="neovim tmux zsh zsh-autosuggestions zsh-syntax-highlighting ripgrep fd jq git-lfs httpie fzf"
 BREW_KUBECTL="kubernetes-cli"
 BREW_DEVEXTRAS="fnm awscli deno opentofu graphviz"
+APT_ZFS="zfsutils-linux"
 
 # perf package depends on distro; show both possibilities in the preview.
 PERF_NOTE="linux-tools-common (ubuntu) | linux-perf (other)"
@@ -92,6 +93,15 @@ compute() {
     TAILSCALE_OUT="tailscale (always; official installer + systemd service)"
   fi
 
+  # ---- zfs (opt-in) ----
+  if [ -z "${WITH_ZFS:-}" ]; then
+    ZFS_OUT="(none — opt-in with WITH_ZFS=1)"
+  elif [ -n "$NO_SUDO_FLAG" ]; then
+    ZFS_OUT="(WITH_ZFS=1 but NO_SUDO: skipped)"
+  else
+    ZFS_OUT="$APT_ZFS (apt) + scripts/zfs_check.sh (Secure Boot / DKMS key check)"
+  fi
+
   # ---- npm globals (after-setup) ----
   if [ -n "$SKIP_DEVTOOLS" ]; then
     NODE_OUT="(none — Node is dev tooling; PRODUCTION/lite skip it)"
@@ -122,6 +132,8 @@ print_report() {
   printf '  %s\n\n' "$CONTAINER_OUT"
   printf '\033[1;34mtailscale:\033[0m\n'
   printf '  %s\n\n' "$TAILSCALE_OUT"
+  printf '\033[1;34mzfs (opt-in WITH_ZFS=1):\033[0m\n'
+  printf '  %s\n\n' "$ZFS_OUT"
   printf '\033[1;34mnode / npm (after-setup):\033[0m\n'
   printf '  %s\n\n' "$NODE_OUT"
   printf '\033[1;34mneovim profile:\033[0m\n'
@@ -152,7 +164,7 @@ check_sync() {
   src="$(dirname "$0")/../.chezmoiscripts/run_once_before_10-install-packages.sh.tmpl"
   [ -f "$src" ] || { echo "check: install script not found at $src"; return 2; }
   local fail=0
-  for p in $APT_BASE $APT_HEAVY $BREW_CORE $BREW_KUBECTL $BREW_DEVEXTRAS; do
+  for p in $APT_BASE $APT_HEAVY $BREW_CORE $BREW_KUBECTL $BREW_DEVEXTRAS $APT_ZFS; do
     [ "$p" = "PERF_PKG" ] && continue
     if ! grep -qF "$p" "$src"; then
       echo "DRIFT: '$p' is in preview but not found in install script"; fail=1

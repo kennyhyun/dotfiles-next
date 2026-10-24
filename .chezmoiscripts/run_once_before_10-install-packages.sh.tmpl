@@ -23,6 +23,12 @@
 #                     gateway). Heavy (own venv + ~610MB model). Needs
 #                     KIROCREW_INSTALL_URL set (see scripts/install_kirocrew.sh).
 #                     Off by default on every role.
+#   WITH_ZFS=1     -> opt in to zfsutils-linux (Linux, needs sudo). On Debian
+#                     the kernel module is built by DKMS, and with Secure Boot
+#                     on it will not load until the DKMS key is enrolled
+#                     (one reboot, console access). After installing, the
+#                     script runs scripts/zfs_check.sh, which prints the steps
+#                     if that is still needed. Off by default on every role.
 #
 # Read-only rootfs (e.g. linuxdev WSL): if `rootfs-rw`/`rootfs-ro` helpers exist
 # and the rootfs is read-only, it is unlocked before sudo installs and re-locked
@@ -280,6 +286,32 @@ install_tailscale() {
   [ -x "$sdir/install_tailscale.sh" ] && "$sdir/install_tailscale.sh" || true
 }
 
+# ZFS (zfsutils-linux). OPT-IN via WITH_ZFS=1. On Debian it pulls in zfs-dkms,
+# which builds the kernel module locally and signs it with a DKMS key. With
+# Secure Boot on, that key must be enrolled once (mokutil) before the module
+# loads. We do not fail the whole install over it: zfs_check.sh prints the
+# steps and we carry on. Debian needs the "contrib" apt component for this.
+install_zfs() {
+  [ -n "${WITH_ZFS:-}" ] || return 0
+  [ "$OS" = "Linux" ] || return 0
+  local sdir="$HOME/.local/share/chezmoi/scripts"
+  if ! command -v zpool >/dev/null 2>&1; then
+    if ! have_sudo; then
+      log "WITH_ZFS=1 but no sudo: skipping zfsutils-linux."
+      return 0
+    fi
+    log "Installing zfsutils-linux"
+    rootfs_ensure_rw               # unlock only now that we know we must write
+    sudo apt-get update
+    sudo apt-get install -y zfsutils-linux \
+      || echo "Could not install zfsutils-linux (on Debian, is 'contrib' enabled in apt sources?)."
+  fi
+  if [ -x "$sdir/zfs_check.sh" ]; then
+    log "Checking that the ZFS kernel module can load"
+    "$sdir/zfs_check.sh" || echo "  (ZFS needs the step above before 'zpool import' works.)"
+  fi
+}
+
 # Neovim runs plugin-free on the lite role. We drop a marker file that
 # init.lua checks; when present it skips the lazy.nvim bootstrap entirely, so
 # no third-party plugins are cloned/compiled (smaller footprint + no plugin
@@ -316,6 +348,7 @@ install_system_packages
 install_role_extras
 install_lite_extras
 install_tailscale
+install_zfs
 
 ensure_brew
 install_brew_packages

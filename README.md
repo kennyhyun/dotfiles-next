@@ -92,6 +92,13 @@ DOTFILES_ROLE=linuxdev WITH_MICROK8S=1 chezmoi apply
 # instead of docker, and runs Neovim plugin-free (built-in syntax only).
 DOTFILES_ROLE=lite chezmoi apply
 
+# ZFS (opt-in): installs zfsutils-linux, then checks the kernel module can
+# load. On Debian with Secure Boot on, the DKMS key must be enrolled once
+# (one reboot, console access); the check prints the steps if so.
+# Re-run the check any time, e.g. before `zpool import`:
+#   ~/.local/share/chezmoi/scripts/zfs_check.sh
+WITH_ZFS=1 chezmoi apply
+
 # No root available: install everything user-local via Homebrew,
 # skip apt packages / chsh
 NO_SUDO=1 chezmoi apply

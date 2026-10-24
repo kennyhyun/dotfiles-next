@@ -37,3 +37,31 @@ bindkey -e
 autoload -Uz edit-command-line
 zle -N edit-command-line
 bindkey '^X^E' edit-command-line
+
+# ---- ZFS: check the kernel module can load before `zpool import` ----
+# On Debian the ZFS module is built by DKMS; with Secure Boot on it will not
+# load until the DKMS key is enrolled. Before `zpool import` (also via
+# `sudo zpool import`) run scripts/zfs_check.sh: silent when ZFS is ready, else
+# it prints the enrolment steps and the import is NOT run.
+# Only for interactive zsh (functions, so `sudo` is covered too; a PATH wrapper
+# would be bypassed by sudo's secure_path). Defined only where zpool exists.
+# Override the checker path with ZFS_CHECK=/path/to/zfs_check.sh.
+if command -v zpool >/dev/null 2>&1; then
+  _zfs_guard() {
+    local chk="${ZFS_CHECK:-$HOME/.local/share/chezmoi/scripts/zfs_check.sh}"
+    [ -x "$chk" ] || return 0
+    local out rc
+    out="$("$chk" 2>&1)"; rc=$?
+    # Quiet only when ready AND loaded; otherwise show what the check said.
+    if [ $rc -ne 0 ] || [ ! -d /sys/module/zfs ]; then print -r -- "$out"; fi
+    return $rc
+  }
+  zpool() {
+    if [[ "$1" == import ]]; then _zfs_guard || return 1; fi
+    command zpool "$@"
+  }
+  sudo() {
+    if [[ "$1" == zpool && "$2" == import ]]; then _zfs_guard || return 1; fi
+    command sudo "$@"
+  }
+fi
