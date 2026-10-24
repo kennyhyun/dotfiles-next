@@ -73,6 +73,22 @@ bindkey '^[[B' down-line-or-beginning-search
 bindkey '^[OA' up-line-or-beginning-search    # application-mode cursor keys
 bindkey '^[OB' down-line-or-beginning-search
 
+# ---- Navigation/editing keys (also lost with oh-my-zsh) ----
+# bindkey -e only populates the keys zsh knows from this terminal; keys like
+# Delete/Home/End were filled in by oh-my-zsh and now come up undefined-key
+# (Delete printed a literal '~'). Bind the terminfo codes with the usual
+# xterm/VT fallbacks so they work over SSH, tmux and raw consoles alike.
+bindkey "${terminfo[kdch1]:-^[[3~}" delete-char          # Delete
+bindkey '^[[3~' delete-char                              # Delete (xterm/VT)
+bindkey "${terminfo[khome]:-^[[H}" beginning-of-line     # Home
+bindkey "${terminfo[kend]:-^[[F}"  end-of-line           # End
+bindkey '^[[H' beginning-of-line
+bindkey '^[[F' end-of-line
+bindkey '^[[1~' beginning-of-line                        # Home (VT/linux)
+bindkey '^[[4~' end-of-line                              # End  (VT/linux)
+bindkey '^[OH' beginning-of-line                         # Home (application)
+bindkey '^[OF' end-of-line                               # End  (application)
+
 # ---- ZFS: check the kernel module can load before `zpool import` ----
 # On Debian the ZFS module is built by DKMS; with Secure Boot on it will not
 # load until the DKMS key is enrolled. Before `zpool import` (also via
