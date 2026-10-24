@@ -10,6 +10,25 @@
 # host-specific (custom functions, extra env, machine paths) directly in your
 # ~/.zshrc, below that first source line. chezmoi never overwrites ~/.zshrc.
 
+# ---- PATH: Homebrew (Linuxbrew) + user-local bin ----
+# Everything below (fnm, fzf, nvim via $EDITOR, chezmoi itself) comes from brew
+# or ~/.local/bin, so this MUST run before any of them. brew's own install adds
+# a shellenv line to a login file, but we do not rely on that being present:
+# resolve brew from its known prefixes and load it here so a fresh login shell
+# always has the right PATH. ~/.local/bin holds user-installed tools (chezmoi,
+# pipx shims) that are not on PATH by default.
+for _brew in /opt/homebrew/bin/brew /usr/local/bin/brew /home/linuxbrew/.linuxbrew/bin/brew; do
+  if [ -x "$_brew" ]; then
+    eval "$("$_brew" shellenv)"
+    break
+  fi
+done
+unset _brew
+case ":$PATH:" in
+  *":$HOME/.local/bin:"*) ;;
+  *) export PATH="$HOME/.local/bin:$PATH" ;;
+esac
+
 # ---- Editor ----
 export VISUAL=nvim
 export EDITOR="$VISUAL"
@@ -65,3 +84,18 @@ if command -v zpool >/dev/null 2>&1; then
     command sudo "$@"
   }
 fi
+
+# ---- History: persist across sessions ----
+# Without these zsh keeps history only in memory for the current session and
+# drops it on exit (default SAVEHIST is 0). HISTFILE gives it somewhere to
+# write; the options append/share across concurrent sessions and de-dup.
+HISTFILE="$HOME/.zsh_history"
+HISTSIZE=50000
+SAVEHIST=50000
+setopt APPEND_HISTORY        # append to $HISTFILE, do not overwrite it
+setopt INC_APPEND_HISTORY    # write each command as it is run, not only at exit
+setopt SHARE_HISTORY         # share history live across concurrent sessions
+setopt HIST_IGNORE_DUPS      # do not record a command identical to the previous
+setopt HIST_IGNORE_SPACE     # a command starting with a space is not recorded
+setopt HIST_REDUCE_BLANKS    # trim superfluous whitespace before recording
+setopt EXTENDED_HISTORY      # record start timestamp and elapsed time
