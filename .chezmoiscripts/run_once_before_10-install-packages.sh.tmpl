@@ -2,7 +2,21 @@
 # Installs packages and build tools. Homebrew-first so it works without root
 # wherever possible.
 #
-# Env flags:
+# Settings. Keep them in ~/.config/chezmoi/chezmoi.toml under [data]:
+#   role = "base" | "linuxdev" | "lite"
+#   production, no_sudo, with_microk8s, with_kirocrew, with_zfs, with_clamav,
+#   with_trivy, with_suricata   (true / false)
+# A DOTFILES_<NAME> environment variable (DOTFILES_ROLE, DOTFILES_NO_SUDO,
+# DOTFILES_WITH_ZFS, ...) overrides the file for one run. The old unprefixed
+# names (PRODUCTION, NO_SUDO, WITH_*) still work but print a warning.
+# Resolution lives in .chezmoitemplates/settings.sh, shared with the setup script.
+#
+# SAFETY: if role / production / no_sudo differ from the last successful run
+# (recorded in ~/.local/state/dotfiles/applied), or nothing was ever recorded and
+# no role is set, the script prints what changed and stops. Re-run with
+# DOTFILES_ACCEPT_CHANGE=1 to accept. It never uninstalls anything.
+#
+# Flags (written here in their old env-var form):
 #   PRODUCTION=1   -> skip developer tooling (awscli/deno/opentofu/graphviz),
 #                     install essentials only
 #   DOTFILES_ROLE  -> "linuxdev": install docker (microk8s is opt-in, see
@@ -36,7 +50,58 @@
 
 set -euo pipefail
 
-ROLE="${DOTFILES_ROLE:-base}"
+{{ template "settings.sh" . }}
+
+# ---- Safety: stop if the settings changed since the last successful run ----
+# We compare only role / production / no_sudo: they change the whole install
+# scope. The opt-in with_* switches are explicit and additive, so they are not
+# compared. The record is written at the very end, only after success.
+STATE_FILE="${XDG_STATE_HOME:-$HOME/.local/state}/dotfiles/applied"
+_flag() { if [ -n "$1" ]; then printf 1; else printf 0; fi; }
+SETTINGS_NOW="$(printf 'role=%s\nproduction=%s\nno_sudo=%s\n' \
+  "$ROLE" "$(_flag "$PRODUCTION")" "$(_flag "$NO_SUDO")")"
+
+settings_guard() {
+  local prev
+  if [ -f "$STATE_FILE" ]; then
+    prev="$(cat "$STATE_FILE")"
+    if [ "$prev" = "$SETTINGS_NOW" ] || [ -n "$ACCEPT_CHANGE" ]; then
+      return 0
+    fi
+    {
+      printf '\n\033[1;31m==> STOPPED: install settings changed since the last run\033[0m\n'
+      printf '\nlast successful run:\n'; printf '%s\n' "$prev" | sed 's/^/    /'
+      printf '\nthis run:\n';           printf '%s\n' "$SETTINGS_NOW" | sed 's/^/    /'
+      printf '\nIf this is intended, accept it once:\n'
+      printf '    DOTFILES_ACCEPT_CHANGE=1 chezmoi apply\n'
+      printf 'If not, fix role / production / no_sudo in ~/.config/chezmoi/chezmoi.toml.\n'
+      printf 'To update files only (no install scripts): chezmoi apply --exclude=scripts\n\n'
+    } >&2
+    exit 1
+  fi
+  # No record yet. A role that was set explicitly is a deliberate choice; an
+  # unset role would silently become "base", which is how a lite or linuxdev
+  # machine gets the wrong package set.
+  if [ -z "$ROLE_EXPLICIT" ] && [ -z "$ACCEPT_CHANGE" ]; then
+    {
+      printf '\n\033[1;31m==> STOPPED: no role is set and no earlier run is recorded\033[0m\n'
+      printf '\nThe role would default to "base". Set it in ~/.config/chezmoi/chezmoi.toml:\n'
+      printf '    [data]\n    role = "linuxdev"    # or "lite" / "base"\n'
+      printf '\nOr, to accept "base" once: DOTFILES_ACCEPT_CHANGE=1 chezmoi apply\n'
+      printf 'To update files only (no install scripts): chezmoi apply --exclude=scripts\n\n'
+    } >&2
+    exit 1
+  fi
+}
+
+# Written only at the very end of a successful run.
+settings_record() {
+  mkdir -p "$(dirname "$STATE_FILE")"
+  printf '%s\n' "$SETTINGS_NOW" > "$STATE_FILE"
+}
+
+settings_guard
+
 SKIP_DEVTOOLS=""
 [ -n "${PRODUCTION:-}" ] && SKIP_DEVTOOLS=1
 
@@ -385,4 +450,5 @@ install_brew_packages
 set_nvim_profile
 install_kirocrew
 
+settings_record
 log "Package installation complete."

@@ -9,30 +9,58 @@
 # containers / tailscale / neovim).
 #
 # Usage:
-#   scripts/preview_packages.sh                      # base role (defaults)
+#   scripts/preview_packages.sh                      # uses your chezmoi.toml
 #   DOTFILES_ROLE=lite     scripts/preview_packages.sh
 #   DOTFILES_ROLE=linuxdev scripts/preview_packages.sh
-#   PRODUCTION=1           scripts/preview_packages.sh
-#   NO_SUDO=1              scripts/preview_packages.sh
+#   DOTFILES_PRODUCTION=1  scripts/preview_packages.sh
+#   DOTFILES_NO_SUDO=1     scripts/preview_packages.sh
 #   scripts/preview_packages.sh --all                # compare every role
 #   scripts/preview_packages.sh --check              # verify it matches source
 #
-# Env flags are read exactly as the install script reads them, so the same
+# Settings are read exactly as the install script reads them (DOTFILES_* env,
+# then the old unprefixed env names, then chezmoi.toml [data]), so the same
 # invocation you would use for `chezmoi apply` previews the right result.
 
 set -euo pipefail
 
 # ---------------------------------------------------------------------------
-# Resolve role / flags the same way the install script does.
+# Resolve role / flags the same way the install script does:
+#   env DOTFILES_<NAME>  >  legacy env (PRODUCTION, NO_SUDO, WITH_*)  >
+#   ~/.config/chezmoi/chezmoi.toml [data]  >  default.
+# DOTFILES_PREVIEW_IGNORE_CONFIG=1 skips chezmoi.toml (used by --all so every
+# combination is shown against clean defaults).
 # ---------------------------------------------------------------------------
+_pv_cfg() {   # KEY -> value from chezmoi [data]; empty when absent or ignored
+  [ -n "${DOTFILES_PREVIEW_IGNORE_CONFIG:-}" ] && return 0
+  command -v chezmoi >/dev/null 2>&1 && command -v jq >/dev/null 2>&1 || return 0
+  chezmoi data --format json 2>/dev/null \
+    | jq -r --arg k "$1" '(.[$k] // empty) | tostring' 2>/dev/null || true
+}
+_pv_str() {   # NAME LEGACY CFGKEY -> raw string value
+  local v="" name="DOTFILES_$1"
+  eval "v=\${$name:-}"
+  if [ -z "$v" ] && [ -n "$2" ]; then eval "v=\${$2:-}"; fi
+  [ -n "$v" ] || v="$(_pv_cfg "$3")"
+  printf '%s' "$v"
+}
+_pv_bool() {  # NAME LEGACY CFGKEY -> 1 or empty
+  case "$(_pv_str "$1" "$2" "$3")" in
+    ''|0|false|FALSE|False|no|NO|No|off|OFF|Off) ;;
+    *) printf 1 ;;
+  esac
+}
+
 resolve_flags() {
-  ROLE="${DOTFILES_ROLE:-base}"
+  ROLE="$(_pv_str ROLE '' role)"
+  [ -n "$ROLE" ] || ROLE=base
+  PRODUCTION="$(_pv_bool PRODUCTION PRODUCTION production)"
+  WITH_ZFS="$(_pv_bool WITH_ZFS WITH_ZFS with_zfs)"
   SKIP_DEVTOOLS=""
-  [ -n "${PRODUCTION:-}" ] && SKIP_DEVTOOLS=1
+  [ -n "$PRODUCTION" ] && SKIP_DEVTOOLS=1
   LITE=""
   [ "$ROLE" = "lite" ] && { LITE=1; SKIP_DEVTOOLS=1; }
   # NO_SUDO: apt + system steps are skipped entirely.
-  NO_SUDO_FLAG="${NO_SUDO:-}"
+  NO_SUDO_FLAG="$(_pv_bool NO_SUDO NO_SUDO no_sudo)"
 }
 
 # ---------------------------------------------------------------------------
@@ -145,11 +173,13 @@ print_all() {
     "base:" \
     "lite:DOTFILES_ROLE=lite" \
     "linuxdev:DOTFILES_ROLE=linuxdev" \
-    "production:PRODUCTION=1" \
-    "no-sudo:NO_SUDO=1"; do
+    "production:DOTFILES_PRODUCTION=1" \
+    "no-sudo:DOTFILES_NO_SUDO=1"; do
     local label="${combo%%:*}" env="${combo#*:}"
     printf '\n\033[1;33m########## %s  (%s) ##########\033[0m\n' "$label" "${env:-defaults}"
-    ( unset DOTFILES_ROLE PRODUCTION NO_SUDO
+    ( unset DOTFILES_ROLE DOTFILES_PRODUCTION DOTFILES_NO_SUDO DOTFILES_WITH_ZFS \
+            PRODUCTION NO_SUDO WITH_ZFS
+      export DOTFILES_PREVIEW_IGNORE_CONFIG=1
       [ -n "$env" ] && export "${env?}"
       print_report )
   done

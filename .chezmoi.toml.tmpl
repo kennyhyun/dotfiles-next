@@ -1,0 +1,17 @@
+{{- /* Rendered by `chezmoi init` into ~/.config/chezmoi/chezmoi.toml.
+       The role is asked once and then remembered. Every other setting keeps the
+       value already in your config (default: off). Edit chezmoi.toml by hand to
+       change them; `chezmoi init` keeps what you set. */ -}}
+{{- $role := promptStringOnce . "role" "Role (base / linuxdev / lite)" "base" -}}
+sourceDir = {{ .chezmoi.sourceDir | quote }}
+
+[data]
+  role          = {{ $role | quote }}
+  production    = {{ get . "production" | default false }}
+  no_sudo       = {{ get . "no_sudo" | default false }}
+  with_microk8s = {{ get . "with_microk8s" | default false }}
+  with_kirocrew = {{ get . "with_kirocrew" | default false }}
+  with_zfs      = {{ get . "with_zfs" | default false }}
+  with_clamav   = {{ get . "with_clamav" | default false }}
+  with_trivy    = {{ get . "with_trivy" | default false }}
+  with_suricata = {{ get . "with_suricata" | default false }}

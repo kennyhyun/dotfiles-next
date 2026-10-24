@@ -22,7 +22,7 @@ and macOS. Bootstraps a fresh machine with a minimal, modern toolchain.
 | Terminal | Alacritty |
 | CLI | git, git-lfs, ripgrep, fd, jq, httpie, fzf, tailscale |
 | Dev (non-production) | awscli, deno, opentofu, graphviz, Node.js (via fnm) |
-| Linux `linuxdev` role | Docker, kubectl (microk8s is opt-in via `WITH_MICROK8S=1`) |
+| Linux `linuxdev` role | Docker, kubectl (microk8s is opt-in via `with_microk8s = true`) |
 | Linux `lite` role | Low-footprint server: no dev tooling, no build-essential/JRE/perf/kubectl, **podman** instead of docker, **plugin-free Neovim** (built-in syntax only) |
 
 ## Neovim
@@ -75,45 +75,65 @@ chezmoi clones the repo into `~/.local/share/chezmoi`, then on `apply`:
 
 Log out and back in afterwards to pick up the shell and environment.
 
-### Install modes
+### Install settings
+
+Settings live in `~/.config/chezmoi/chezmoi.toml` under `[data]`, one file per
+machine (not in this repo). `chezmoi init` asks for the **role** once and writes
+the file from `.chezmoi.toml.tmpl`; the other keys default to `false`.
+
+```toml
+[data]
+  role          = "linuxdev"   # base | linuxdev | lite
+  production    = false        # skip developer tooling
+  no_sudo       = false        # never call sudo; user-local (Homebrew) only
+  with_microk8s = false        # opt-in extras, all additive
+  with_kirocrew = false
+  with_zfs      = false
+  with_clamav   = false
+  with_trivy    = false
+  with_suricata = false
+```
+
+| Role | Installs |
+|------|----------|
+| `base` | Essentials, dev tooling, Homebrew CLI set |
+| `linuxdev` | `base` + Docker (microk8s is opt-in) |
+| `lite` | Low-footprint server: no dev tooling, no build-essential/JRE/perf, kubectl skipped, **podman** instead of docker, **plugin-free Neovim** |
+
+Override a setting for one run with a `DOTFILES_<NAME>` environment variable
+(it wins over the file):
 
 ```bash
-# Production server: skip developer tooling
-PRODUCTION=1 chezmoi apply
-
-# Linux dev role: install Docker (microk8s is opt-in)
-DOTFILES_ROLE=linuxdev chezmoi apply
-
-# ...with microk8s too (heavy: snap, hundreds of MB)
-DOTFILES_ROLE=linuxdev WITH_MICROK8S=1 chezmoi apply
-
-# Lite server role: low-footprint. Skips dev tooling + heavy apt packages
-# (build-essential, default-jre, perf tools) and kubectl, installs podman
-# instead of docker, and runs Neovim plugin-free (built-in syntax only).
 DOTFILES_ROLE=lite chezmoi apply
-
-# ZFS (opt-in): installs zfsutils-linux, then checks the kernel module can
-# load. On Debian with Secure Boot on, the DKMS key must be enrolled once
-# (one reboot, console access); the check prints the steps if so.
-# Re-run the check any time, e.g. before `zpool import`:
-#   "$(chezmoi source-path)/scripts/zfs_check.sh"
-WITH_ZFS=1 chezmoi apply
-
-# Security tooling (all opt-in; Linux only; need sudo). Each is idempotent.
-#   WITH_CLAMAV=1   on-demand malware scanner (detects Win + Linux sigs).
-#                   Installs clamscan + freshclam (no resident daemon).
-#                   Scan a disk:  clamscan -r --infected /mnt/disk1
-#   WITH_TRIVY=1    CVE / misconfig / secret scanner (NOT a malware scanner).
-#                   Scan a project:  trivy fs .
-#   WITH_SURICATA=1 network IDS. Installs + fetches rules but does NOT start
-#                   monitoring (the interface to watch is host-specific).
-#                   Start it:  sudo suricata -i <iface> -D
-WITH_CLAMAV=1 WITH_TRIVY=1 WITH_SURICATA=1 chezmoi apply
-
-# No root available: install everything user-local via Homebrew,
-# skip apt packages / chsh
-NO_SUDO=1 chezmoi apply
+DOTFILES_WITH_ZFS=1 chezmoi apply        # one-off opt-in
+DOTFILES_NO_SUDO=1 chezmoi apply         # no root available
 ```
+
+The old unprefixed names (`PRODUCTION`, `NO_SUDO`, `WITH_*`) still work but
+print a deprecation warning. Do not export them in `~/.zshrc`: names this short
+collide with other tools.
+
+**Safety stop.** The package script records `role`, `production` and `no_sudo`
+in `~/.local/state/dotfiles/applied` after each successful run. If they differ
+on the next run, or nothing is recorded and no role is set, it prints what
+changed and stops before installing anything. Accept a deliberate change once
+with `DOTFILES_ACCEPT_CHANGE=1 chezmoi apply`. To update files without running
+the install scripts at all: `chezmoi apply --exclude=scripts`. Nothing is ever
+uninstalled when a setting is turned off.
+
+Extra notes on the opt-ins:
+
+- `with_zfs` installs `zfsutils-linux`, then checks the kernel module can load.
+  On Debian with Secure Boot on, the DKMS key must be enrolled once (one
+  reboot, console access); the check prints the steps if so. Re-run it any
+  time, e.g. before `zpool import`: `"$(chezmoi source-path)/scripts/zfs_check.sh"`
+- Security tooling (Linux only; needs sudo; each is idempotent):
+  `with_clamav` (on-demand malware scanner: `clamscan -r --infected /mnt/disk1`),
+  `with_trivy` (CVE / misconfig / secret scanner: `trivy fs .`), `with_suricata`
+  (network IDS; installs + fetches rules but does NOT start monitoring: start it
+  with `sudo suricata -i <iface> -D`).
+- Preview what a setting would install, without installing:
+  `scripts/preview_packages.sh` (add `--all` to compare every role).
 
 The bootstrap is Homebrew-first, so most tooling installs into your home
 without root. On a **read-only rootfs** (e.g. a linuxdev WSL image) where the
