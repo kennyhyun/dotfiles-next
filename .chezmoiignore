@@ -8,3 +8,6 @@ scripts/**
 # (~/.config/zsh/chezmoi.zsh). chezmoi must not replace it.
 .zshrc
 .zshrc.local
+
+# Windows-only helper scripts; not applied to the Linux home dir.
+windows/**
