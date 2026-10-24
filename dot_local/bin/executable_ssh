@@ -1,0 +1,37 @@
+#!/usr/bin/env bash
+# Conditional ssh wrapper (chezmoi-managed).
+# In a user-namespace sandbox (e.g. the Kiro Crew agent), root-owned
+# /etc/ssh/ssh_config.d/*.conf appear owned by "nobody" because root is
+# unmapped in the namespace, and OpenSSH aborts with
+#   "Bad owner or permissions on /etc/ssh/ssh_config.d/...".
+# When that is detected, fall back to the user's own config with -F so the
+# unreadable system config is skipped. Otherwise behave exactly like real ssh,
+# so this is a no-op on normal machines (and on Windows, where it is ignored).
+set -euo pipefail
+
+real=""
+for c in /usr/bin/ssh /bin/ssh; do
+  [ -x "$c" ] && real="$c" && break
+done
+if [ -z "$real" ]; then
+  echo "ssh-wrapper: real ssh binary not found" >&2
+  exit 127
+fi
+
+need_fallback=0
+if [ -d /etc/ssh/ssh_config.d ]; then
+  for f in /etc/ssh/ssh_config.d/*.conf /etc/ssh/ssh_config; do
+    [ -e "$f" ] || continue
+    owner=$(stat -c '%U' "$f" 2>/dev/null || true)
+    # "nobody"/"UNKNOWN" => real root owner is unmapped in our user namespace
+    if [ "$owner" = "nobody" ] || [ "$owner" = "UNKNOWN" ]; then
+      need_fallback=1
+      break
+    fi
+  done
+fi
+
+if [ "$need_fallback" = 1 ] && [ -r "$HOME/.ssh/config" ]; then
+  exec "$real" -F "$HOME/.ssh/config" "$@"
+fi
+exec "$real" "$@"
