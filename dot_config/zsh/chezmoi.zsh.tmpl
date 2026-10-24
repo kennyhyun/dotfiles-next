@@ -48,7 +48,7 @@ bindkey '^X^E' edit-command-line
 # Override the checker path with ZFS_CHECK=/path/to/zfs_check.sh.
 if command -v zpool >/dev/null 2>&1; then
   _zfs_guard() {
-    local chk="${ZFS_CHECK:-$HOME/.local/share/chezmoi/scripts/zfs_check.sh}"
+    local chk="${ZFS_CHECK:-{{ .chezmoi.sourceDir }}/scripts/zfs_check.sh}"
     [ -x "$chk" ] || return 0
     local out rc
     out="$("$chk" 2>&1)"; rc=$?
