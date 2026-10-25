@@ -97,6 +97,7 @@ the file from `.chezmoi.toml.tmpl`; the other keys default to `false`.
   with_samba    = false        # SMB/CIFS server (mixed Win/mac/Linux clients)
   with_nfs      = false        # NFS kernel server (Linux/Unix clients)
   with_nas      = false        # umbrella: cockpit + samba + nfs
+  with_orbstack = false        # macOS: OrbStack container runtime (drop-in Docker Desktop replacement)
 ```
 
 | Role | Installs |
@@ -128,6 +129,9 @@ uninstalled when a setting is turned off.
 
 Extra notes on the opt-ins:
 
+- `with_orbstack` installs [OrbStack](https://orbstack.dev) on macOS via brew cask: a
+  native lightweight VM that is a drop-in Docker Desktop replacement (free for personal
+  use). Skipped on Linux.
 - `with_zfs` installs `zfsutils-linux`, then checks the kernel module can load.
   On Debian with Secure Boot on, the DKMS key must be enrolled once (one
   reboot, console access); the check prints the steps if so. Re-run it any

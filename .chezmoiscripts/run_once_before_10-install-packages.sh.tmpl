@@ -46,6 +46,10 @@
 #                     (one reboot, console access). After installing, the
 #                     script runs scripts/zfs_check.sh, which prints the steps
 #                     if that is still needed. Off by default on every role.
+#   WITH_ORBSTACK=1-> opt in to OrbStack on macOS: a native lightweight VM that
+#                     replaces Docker Desktop (drop-in Docker socket + CLI). GUI
+#                     menubar app. Free for personal use, paid for commercial.
+#                     https://orbstack.dev. Skipped on Linux.
 #   WITH_NAS=1     -> umbrella for the NAS share stack: turns on WITH_COCKPIT,
 #                     WITH_SAMBA and WITH_NFS. Off by default on every role.
 #   WITH_COCKPIT=1 -> opt in to Cockpit, a light socket-activated web admin UI
@@ -458,6 +462,20 @@ install_nas() {
   [ -n "$need_nfs" ]     && [ -x "$sdir/install_nfs.sh" ]     && "$sdir/install_nfs.sh"     || true
 }
 
+# macOS container runtime. OrbStack is a native lightweight VM that is a drop-in
+# Docker Desktop replacement. Free for personal use, paid for commercial.
+# Skipped on Linux (the linuxdev role handles Docker natively).
+install_macos_docker() {
+  [ "$OS" = "Darwin" ] || return 0
+  [ -n "${WITH_ORBSTACK:-}" ] || return 0
+  if command -v orb >/dev/null 2>&1; then
+    log "OrbStack already installed ($(orb version 2>/dev/null | head -1)); skipping."
+    return 0
+  fi
+  log "Installing OrbStack (brew cask)"
+  brew install --cask orbstack
+}
+
 # Neovim runs plugin-free on the lite role. We drop a marker file that
 # init.lua checks; when present it skips the lazy.nvim bootstrap entirely, so
 # no third-party plugins are cloned/compiled (smaller footprint + no plugin
@@ -497,6 +515,7 @@ install_tailscale
 install_zfs
 install_security_tools
 install_nas
+install_macos_docker
 
 ensure_brew
 install_brew_packages
