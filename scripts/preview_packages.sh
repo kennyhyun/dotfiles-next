@@ -72,7 +72,7 @@ resolve_flags() {
 # Package definitions — kept in sync with the install script. The --check mode
 # below greps the install script to catch drift.
 # ---------------------------------------------------------------------------
-APT_BASE="apt-transport-https ca-certificates git git-lfs htop jq curl net-tools psmisc"
+APT_BASE="apt-transport-https ca-certificates git git-lfs htop jq curl net-tools psmisc whois"
 APT_HEAVY="build-essential PERF_PKG python3-pip python3-venv pipx default-jre xclip lshw"
 
 BREW_CORE="neovim tmux zsh zsh-autosuggestions zsh-syntax-highlighting ripgrep fd jq git-lfs httpie fzf"

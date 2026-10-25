@@ -225,7 +225,7 @@ install_system_packages() {
     git git-lfs
     htop
     jq curl
-    net-tools psmisc
+    net-tools psmisc whois
   "
   # Heavy / developer packages: skipped on the "lite" server role.
   #   build-essential : C compiler + libc headers (treesitter, source builds)
@@ -457,8 +457,11 @@ install_nas() {
 
   log "installing NAS stack:${need_cockpit:+ cockpit}${need_samba:+ samba}${need_nfs:+ nfs}"
   rootfs_ensure_rw                 # unlock only now that we know we must write
-  [ -n "$need_cockpit" ] && [ -x "$sdir/install_cockpit.sh" ] && "$sdir/install_cockpit.sh" || true
+  # Samba first: install_cockpit.sh adds `include = registry` to smb.conf when
+  # cockpit-file-sharing lands, so smb.conf should already exist by then. (The
+  # cockpit script also handles the reverse order defensively.)
   [ -n "$need_samba" ]   && [ -x "$sdir/install_samba.sh" ]   && "$sdir/install_samba.sh"   || true
+  [ -n "$need_cockpit" ] && [ -x "$sdir/install_cockpit.sh" ] && "$sdir/install_cockpit.sh" || true
   [ -n "$need_nfs" ]     && [ -x "$sdir/install_nfs.sh" ]     && "$sdir/install_nfs.sh"     || true
 }
 

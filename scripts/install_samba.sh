@@ -26,6 +26,38 @@ else
   sudo apt-get install -y samba cifs-utils
 fi
 
+# cockpit-file-sharing stores the SMB shares it manages in Samba's *registry*
+# (a TDB DB) via `net conf`, not as text in smb.conf — that is what lets the web
+# UI add/remove shares safely. For Samba to actually serve those shares, the
+# [global] section must contain `include = registry`; without it the File
+# Sharing panel warns "Samba is Misconfigured" and cannot manage SMB shares.
+# We add the line only when Cockpit is (or is being) installed, so a plain Samba
+# box without the web UI keeps a stock smb.conf. Idempotent: added once.
+SMB_CONF="/etc/samba/smb.conf"
+cockpit_present() {
+  command -v cockpit-bridge >/dev/null 2>&1 || [ -d /usr/share/cockpit/file-sharing ]
+}
+if [ -f "$SMB_CONF" ] && cockpit_present \
+   && ! grep -qE '^[[:space:]]*include[[:space:]]*=[[:space:]]*registry' "$SMB_CONF"; then
+  echo "Enabling Samba registry shares for Cockpit File Sharing (include = registry)"
+  sudo cp -a "$SMB_CONF" "$SMB_CONF.bak.$(date +%Y%m%d%H%M%S)"
+  # Insert the include right after the first [global] header.
+  if grep -qE '^\[global\]' "$SMB_CONF"; then
+    sudo sed -i '0,/^\[global\]/s//[global]\n   include = registry/' "$SMB_CONF"
+  else
+    # No [global] section at all: append one.
+    printf '\n[global]\n   include = registry\n' | sudo tee -a "$SMB_CONF" >/dev/null
+  fi
+  # Validate before reloading; roll back if testparm rejects the file.
+  if sudo testparm -s "$SMB_CONF" >/dev/null 2>&1; then
+    sudo systemctl reload smbd 2>/dev/null || sudo systemctl restart smbd 2>/dev/null || true
+  else
+    echo "WARNING: testparm rejected $SMB_CONF after adding include=registry; restoring backup."
+    last_bak="$(ls -1t "$SMB_CONF".bak.* 2>/dev/null | head -1)"
+    [ -n "$last_bak" ] && sudo cp -a "$last_bak" "$SMB_CONF"
+  fi
+fi
+
 # Enable the SMB + NetBIOS name services so they start on boot.
 if command -v systemctl >/dev/null 2>&1; then
   sudo systemctl enable --now smbd 2>/dev/null \

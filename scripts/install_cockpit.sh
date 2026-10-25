@@ -65,6 +65,43 @@ else
   echo "cockpit-file-sharing already present; skipping."
 fi
 
+# Verify the plugin actually landed. The download/install steps above swallow
+# their own errors (|| echo) so one bad run does not abort the whole bootstrap;
+# but that also means a silent skip once left Cockpit installed WITHOUT the
+# share manager, and `chezmoi apply` still reported success. So check the end
+# state explicitly and say so loudly if file-sharing is still missing, instead
+# of letting it pass unnoticed.
+if [ ! -d /usr/share/cockpit/file-sharing ]; then
+  echo "WARNING: cockpit-file-sharing is NOT installed (the Samba/NFS share" >&2
+  echo "         manager will be absent from the Cockpit UI). Re-run this" >&2
+  echo "         script, or install the .deb for your distro codename from" >&2
+  echo "         https://github.com/45Drives/cockpit-file-sharing/releases" >&2
+fi
+
+# cockpit-file-sharing manages SMB shares through Samba's registry (via
+# `net conf`), which Samba only serves when `include = registry` is in the
+# [global] section of /etc/samba/smb.conf. Without it the File Sharing panel
+# shows "Samba is Misconfigured". Samba may be installed before OR after
+# Cockpit, so guarantee the line here too whenever smb.conf exists. Idempotent.
+SMB_CONF="/etc/samba/smb.conf"
+if [ -d /usr/share/cockpit/file-sharing ] && [ -f "$SMB_CONF" ] \
+   && ! grep -qE '^[[:space:]]*include[[:space:]]*=[[:space:]]*registry' "$SMB_CONF"; then
+  echo "Enabling Samba registry shares for Cockpit File Sharing (include = registry)"
+  sudo cp -a "$SMB_CONF" "$SMB_CONF.bak.$(date +%Y%m%d%H%M%S)"
+  if grep -qE '^\[global\]' "$SMB_CONF"; then
+    sudo sed -i '0,/^\[global\]/s//[global]\n   include = registry/' "$SMB_CONF"
+  else
+    printf '\n[global]\n   include = registry\n' | sudo tee -a "$SMB_CONF" >/dev/null
+  fi
+  if sudo testparm -s "$SMB_CONF" >/dev/null 2>&1; then
+    sudo systemctl reload smbd 2>/dev/null || sudo systemctl restart smbd 2>/dev/null || true
+  else
+    echo "WARNING: testparm rejected $SMB_CONF after adding include=registry; restoring backup." >&2
+    last_bak="$(ls -1t "$SMB_CONF".bak.* 2>/dev/null | head -1)"
+    [ -n "$last_bak" ] && sudo cp -a "$last_bak" "$SMB_CONF"
+  fi
+fi
+
 # Socket-activate cockpit: the .socket listens and spawns cockpit-ws on demand,
 # so nothing runs until someone connects (the whole point of the "light" story).
 if command -v systemctl >/dev/null 2>&1; then
