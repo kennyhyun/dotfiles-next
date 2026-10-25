@@ -474,7 +474,7 @@ install_macos_docker() {
     log "Installing OrbStack (brew cask)"
     brew install --cask orbstack
   fi
-  if [ ! -d "$HOME/.orbstack/bin" ]; then
+  if [ -d "/Applications/OrbStack.app" ] && [ ! -d "$HOME/.orbstack/bin" ]; then
     printf '\n\033[1;33m==> OrbStack installed but not yet initialised.\033[0m\n'
     printf '    Launch OrbStack once to complete setup:\n'
     printf '        open -a OrbStack\n'
