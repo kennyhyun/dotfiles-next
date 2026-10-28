@@ -29,6 +29,10 @@ case ":$PATH:" in
   *) export PATH="$HOME/.local/bin:$PATH" ;;
 esac
 
+# ---- AWS CLI ----
+# Keep JSON output in the terminal instead of opening less.
+export AWS_PAGER=""
+
 # ---- Editor ----
 export VISUAL=nvim
 export EDITOR="$VISUAL"
