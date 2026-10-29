@@ -53,6 +53,7 @@ PRODUCTION="$(_dotfiles_bool "$(_dotfiles_get PRODUCTION PRODUCTION '{{ get . "p
 NO_SUDO="$(_dotfiles_bool "$(_dotfiles_get NO_SUDO NO_SUDO '{{ get . "no_sudo" }}')")"
 WITH_MICROK8S="$(_dotfiles_bool "$(_dotfiles_get WITH_MICROK8S WITH_MICROK8S '{{ get . "with_microk8s" }}')")"
 WITH_KIROCREW="$(_dotfiles_bool "$(_dotfiles_get WITH_KIROCREW WITH_KIROCREW '{{ get . "with_kirocrew" }}')")"
+WITH_KOMODO="$(_dotfiles_bool "$(_dotfiles_get WITH_KOMODO WITH_KOMODO '{{ get . "with_komodo" }}')")"
 WITH_ZFS="$(_dotfiles_bool "$(_dotfiles_get WITH_ZFS WITH_ZFS '{{ get . "with_zfs" }}')")"
 WITH_CLAMAV="$(_dotfiles_bool "$(_dotfiles_get WITH_CLAMAV WITH_CLAMAV '{{ get . "with_clamav" }}')")"
 WITH_TRIVY="$(_dotfiles_bool "$(_dotfiles_get WITH_TRIVY WITH_TRIVY '{{ get . "with_trivy" }}')")"

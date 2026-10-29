@@ -11,6 +11,7 @@ sourceDir = {{ .chezmoi.sourceDir | quote }}
   no_sudo       = {{ get . "no_sudo" | default false }}
   with_microk8s = {{ get . "with_microk8s" | default false }}
   with_kirocrew = {{ get . "with_kirocrew" | default false }}
+  with_komodo   = {{ get . "with_komodo" | default false }}
   with_zfs      = {{ get . "with_zfs" | default false }}
   with_clamav   = {{ get . "with_clamav" | default false }}
   with_trivy    = {{ get . "with_trivy" | default false }}

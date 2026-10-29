@@ -514,6 +514,19 @@ install_kirocrew() {
   fi
 }
 
+# Komodo (container management platform). OPT-IN via WITH_KOMODO=1.
+# Runs as a rootless podman + systemd user service. Linux only.
+# Requires /etc/homelab/komodo/compose.yml to exist before running.
+install_komodo() {
+  [ -n "${WITH_KOMODO:-}" ] || return 0
+  [ "$OS" = "Linux" ] || return 0
+  local sdir="{{ .chezmoi.sourceDir }}/scripts"
+  if [ -x "$sdir/install_komodo.sh" ]; then
+    log "WITH_KOMODO=1: installing Komodo"
+    "$sdir/install_komodo.sh" || echo "Komodo install reported an issue (see output above)."
+  fi
+}
+
 # brew installs to its own prefix and needs no root / no rootfs unlock.
 # System/apt steps unlock the rootfs lazily (only when they have something to
 # install); the EXIT trap set by rootfs_ensure_rw re-locks afterwards.
@@ -530,6 +543,7 @@ ensure_brew
 install_brew_packages
 set_nvim_profile
 install_kirocrew
+install_komodo
 
 settings_record
 log "Package installation complete."
