@@ -115,22 +115,8 @@ echo "    compose.yml -> $COMPOSE_PATH"
 # Check for missing env files
 ENV_MISSING=false
 for f in komodo.env komodo-periphery.env; do
-  if [ ! -f "$HOMELAB_DIR/$f" ]; then
-    echo "WARNING: $HOMELAB_DIR/$f not found"
-    ENV_MISSING=true
-  fi
+  [ ! -f "$HOMELAB_DIR/$f" ] && ENV_MISSING=true
 done
-if $ENV_MISSING; then
-  echo ""
-  echo "    Create the missing env files before starting the service."
-  echo "    Minimal example for $HOMELAB_DIR/komodo.env:"
-  echo "      KOMODO_HOST=https://komodo.yeoyou.net"
-  echo "      KOMODO_PASSKEY=<strong-passkey>"
-  echo "    Minimal example for $HOMELAB_DIR/komodo-periphery.env:"
-  echo "      PERIPHERY_PASSKEYS=<same-passkey>"
-  echo "      PERIPHERY_ALLOWED_IPS=komodo-core"
-  echo ""
-fi
 
 # Fix podman socket path if UID != 1000
 CURRENT_UID="$(id -u)"
@@ -169,9 +155,29 @@ loginctl enable-linger "$(id -un)"
 systemctl --user enable "$SERVICE_NAME"
 
 if $ENV_MISSING; then
-  echo ">>> Service installed but NOT started (env files missing)."
-  echo "    After creating the env files, run:"
-  echo "      systemctl --user start $SERVICE_NAME"
+  echo ">>> Service installed but NOT started — env files are missing."
+  echo ""
+  echo "    1. Create /etc/homelab/komodo.env:"
+  echo ""
+  echo "       sudo tee /etc/homelab/komodo.env <<'EOF'"
+  echo "       KOMODO_HOST=https://komodo.yeoyou.net"
+  echo "       KOMODO_DB_ADDRESS=mongodb://komodo-db:27017"
+  echo "       KOMODO_DB_NAME=komodo"
+  echo "       KOMODO_PASSKEY=<strong-passkey>"
+  echo "       EOF"
+  echo ""
+  echo "    2. Create /etc/homelab/komodo-periphery.env:"
+  echo ""
+  echo "       sudo tee /etc/homelab/komodo-periphery.env <<'EOF'"
+  echo "       PERIPHERY_PASSKEYS=<same-passkey>"
+  echo "       PERIPHERY_ALLOWED_IPS=komodo-core"
+  echo "       EOF"
+  echo ""
+  echo "    3. Start the service:"
+  echo ""
+  echo "       systemctl --user start $SERVICE_NAME"
+  echo "       journalctl --user -u $SERVICE_NAME -f"
+  echo ""
 else
   systemctl --user start "$SERVICE_NAME"
   echo ""
