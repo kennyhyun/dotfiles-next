@@ -534,6 +534,10 @@ setup_linger() {
   [ -n "$LITE" ] || [ -n "${WITH_KOMODO:-}" ] || [ -n "${WITH_KIROCREW:-}" ] || return 0
   command -v loginctl > /dev/null 2>&1 || return 0
   loginctl enable-linger "$(id -un)" 2>/dev/null || true
+  # Enable rootless podman socket so containers can be managed without a login session
+  export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
+  export DBUS_SESSION_BUS_ADDRESS="${DBUS_SESSION_BUS_ADDRESS:-unix:path=${XDG_RUNTIME_DIR}/bus}"
+  timeout 5 systemctl --user enable --now podman.socket 2>/dev/null || true
 }
 
 # brew installs to its own prefix and needs no root / no rootfs unlock.

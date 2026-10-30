@@ -116,6 +116,11 @@ for f in komodo.env komodo-periphery.env; do
   [ ! -f "$KOMODO_DIR/$f" ] && ENV_MISSING=true
 done
 
+# ── podman socket (required for periphery to manage containers) ───────────────
+export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
+export DBUS_SESSION_BUS_ADDRESS="${DBUS_SESSION_BUS_ADDRESS:-unix:path=${XDG_RUNTIME_DIR}/bus}"
+timeout 5 systemctl --user enable --now podman.socket 2>/dev/null || true
+
 # ── komodo network ────────────────────────────────────────────────────────────
 podman network exists komodo 2>/dev/null || podman network create komodo
 
