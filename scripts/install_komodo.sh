@@ -2,13 +2,13 @@
 # Komodo Container Management Platform — optional installer
 # Usage: install_komodo.sh [--uninstall]
 #
-# Env files required in /etc/komodo/ before starting the service:
-#   komodo.env, komodo-periphery.env
+# Config dir: ~/.config/komodo/
+#   komodo.env, komodo-periphery.env, compose.yml
 
 set -e
 
 SERVICE_NAME="komodo"
-KOMODO_DIR="/etc/komodo"
+KOMODO_DIR="$HOME/.config/komodo"
 COMPOSE_PATH="$KOMODO_DIR/compose.yml"
 SERVICE_DIR="$HOME/.config/systemd/user"
 SERVICE_FILE="$SERVICE_DIR/$SERVICE_NAME.service"
@@ -51,12 +51,12 @@ if ! podman compose version > /dev/null 2>&1; then
   exit 1
 fi
 
-# ── /etc/komodo + compose.yml ─────────────────────────────────────────────────
-sudo install -d "$KOMODO_DIR"
+# ── ~/.config/komodo + compose.yml ───────────────────────────────────────────
+install -d "$KOMODO_DIR"
 
 CURRENT_UID="$(id -u)"
 
-sudo tee "$COMPOSE_PATH" > /dev/null <<COMPOSE
+cat > "$COMPOSE_PATH" <<COMPOSE
 name: komodo
 
 services:
@@ -113,7 +113,7 @@ for f in komodo.env komodo-periphery.env; do
   [ ! -f "$KOMODO_DIR/$f" ] && ENV_MISSING=true
 done
 
-# ── homelab network ───────────────────────────────────────────────────────────
+# ── komodo network ────────────────────────────────────────────────────────────
 podman network exists komodo 2>/dev/null || podman network create komodo
 
 # ── systemd user service ──────────────────────────────────────────────────────
@@ -147,7 +147,7 @@ if $ENV_MISSING; then
   echo ""
   echo "    1. Create $KOMODO_DIR/komodo.env:"
   echo ""
-  echo "       sudo tee $KOMODO_DIR/komodo.env <<'EOF'"
+  echo "       cat > $KOMODO_DIR/komodo.env <<'EOF'"
   echo "       KOMODO_HOST=https://<your-domain>"
   echo "       KOMODO_DB_ADDRESS=mongodb://komodo-db:27017"
   echo "       KOMODO_DB_NAME=komodo"
@@ -156,7 +156,7 @@ if $ENV_MISSING; then
   echo ""
   echo "    2. Create $KOMODO_DIR/komodo-periphery.env:"
   echo ""
-  echo "       sudo tee $KOMODO_DIR/komodo-periphery.env <<'EOF'"
+  echo "       cat > $KOMODO_DIR/komodo-periphery.env <<'EOF'"
   echo "       PERIPHERY_PASSKEYS=<same-passkey>"
   echo "       PERIPHERY_ALLOWED_IPS=komodo-core"
   echo "       EOF"
