@@ -2,14 +2,13 @@
 # Komodo Container Management Platform — optional installer
 # Usage: install_komodo.sh [--uninstall]
 #
-# Env files required in /etc/homelab/ before starting the service:
+# Env files required in /etc/komodo/ before starting the service:
 #   komodo.env, komodo-periphery.env
 
 set -e
 
 SERVICE_NAME="komodo"
-HOMELAB_DIR="/etc/homelab"
-KOMODO_DIR="$HOMELAB_DIR/komodo"
+KOMODO_DIR="/etc/komodo"
 COMPOSE_PATH="$KOMODO_DIR/compose.yml"
 SERVICE_DIR="$HOME/.config/systemd/user"
 SERVICE_FILE="$SERVICE_DIR/$SERVICE_NAME.service"
@@ -52,10 +51,12 @@ if ! podman compose version > /dev/null 2>&1; then
   exit 1
 fi
 
-# ── /etc/homelab/komodo + compose.yml ────────────────────────────────────────
+# ── /etc/komodo + compose.yml ─────────────────────────────────────────────────
 sudo install -d "$KOMODO_DIR"
 
-sudo tee "$COMPOSE_PATH" > /dev/null <<'COMPOSE'
+CURRENT_UID="$(id -u)"
+
+sudo tee "$COMPOSE_PATH" > /dev/null <<COMPOSE
 name: komodo
 
 services:
@@ -65,29 +66,24 @@ services:
     restart: unless-stopped
     depends_on:
       - komodo-db
-    env_file: /etc/homelab/komodo.env
+    env_file: $KOMODO_DIR/komodo.env
     ports:
       - "9120:9120"
     volumes:
       - komodo-data:/data
-    labels:
-      - "traefik.enable=true"
-      - "traefik.http.routers.komodo.rule=Host(`komodo.yeoyou.net`)"
-      - "traefik.http.routers.komodo.tls=true"
-      - "traefik.http.services.komodo.loadbalancer.server.port=9120"
     networks:
-      - homelab
+      - komodo
 
   komodo-periphery:
     image: ghcr.io/moghtech/komodo-periphery:latest
     container_name: komodo-periphery
     restart: unless-stopped
-    env_file: /etc/homelab/komodo-periphery.env
+    env_file: $KOMODO_DIR/komodo-periphery.env
     volumes:
-      - /run/user/1000/podman/podman.sock:/run/podman/podman.sock:ro
-      - /etc/homelab:/etc/homelab:ro
+      - /run/user/$CURRENT_UID/podman/podman.sock:/run/podman/podman.sock:ro
+      - $KOMODO_DIR:$KOMODO_DIR:ro
     networks:
-      - homelab
+      - komodo
 
   komodo-db:
     image: mongo:7
@@ -96,12 +92,11 @@ services:
     volumes:
       - komodo-db:/data/db
     networks:
-      - homelab
+      - komodo
 
 networks:
-  homelab:
-    name: homelab
-    external: true
+  komodo:
+    name: komodo
 
 volumes:
   komodo-data:
@@ -112,27 +107,20 @@ COMPOSE
 
 echo "    compose.yml -> $COMPOSE_PATH"
 
-# Check for missing env files
+# ── Check for missing env files ───────────────────────────────────────────────
 ENV_MISSING=false
 for f in komodo.env komodo-periphery.env; do
-  [ ! -f "$HOMELAB_DIR/$f" ] && ENV_MISSING=true
+  [ ! -f "$KOMODO_DIR/$f" ] && ENV_MISSING=true
 done
 
-# Fix podman socket path if UID != 1000
-CURRENT_UID="$(id -u)"
-if [ "$CURRENT_UID" != "1000" ]; then
-  sudo sed -i "s|/run/user/1000|/run/user/$CURRENT_UID|g" "$COMPOSE_PATH"
-  echo "    Patched podman socket path to /run/user/$CURRENT_UID"
-fi
-
 # ── homelab network ───────────────────────────────────────────────────────────
-podman network exists homelab 2>/dev/null || podman network create homelab
+podman network exists komodo 2>/dev/null || podman network create komodo
 
 # ── systemd user service ──────────────────────────────────────────────────────
 echo ">>> Installing systemd user service..."
 mkdir -p "$SERVICE_DIR"
 
-cat > "$SERVICE_FILE" <<'UNIT'
+cat > "$SERVICE_FILE" <<UNIT
 [Unit]
 Description=Komodo Container Management Platform
 After=network-online.target
@@ -141,9 +129,9 @@ Wants=network-online.target
 [Service]
 Type=oneshot
 RemainAfterExit=yes
-ExecStartPre=-/usr/bin/podman network create homelab
-ExecStart=/usr/bin/podman compose -f /etc/homelab/komodo/compose.yml up -d --remove-orphans
-ExecStop=/usr/bin/podman compose -f /etc/homelab/komodo/compose.yml down
+ExecStartPre=-/usr/bin/podman network create komodo
+ExecStart=/usr/bin/podman compose -f $COMPOSE_PATH up -d --remove-orphans
+ExecStop=/usr/bin/podman compose -f $COMPOSE_PATH down
 TimeoutStartSec=300
 
 [Install]
@@ -157,18 +145,18 @@ systemctl --user enable "$SERVICE_NAME"
 if $ENV_MISSING; then
   echo ">>> Service installed but NOT started — env files are missing."
   echo ""
-  echo "    1. Create /etc/homelab/komodo.env:"
+  echo "    1. Create $KOMODO_DIR/komodo.env:"
   echo ""
-  echo "       sudo tee /etc/homelab/komodo.env <<'EOF'"
-  echo "       KOMODO_HOST=https://komodo.yeoyou.net"
+  echo "       sudo tee $KOMODO_DIR/komodo.env <<'EOF'"
+  echo "       KOMODO_HOST=https://<your-domain>"
   echo "       KOMODO_DB_ADDRESS=mongodb://komodo-db:27017"
   echo "       KOMODO_DB_NAME=komodo"
   echo "       KOMODO_PASSKEY=<strong-passkey>"
   echo "       EOF"
   echo ""
-  echo "    2. Create /etc/homelab/komodo-periphery.env:"
+  echo "    2. Create $KOMODO_DIR/komodo-periphery.env:"
   echo ""
-  echo "       sudo tee /etc/homelab/komodo-periphery.env <<'EOF'"
+  echo "       sudo tee $KOMODO_DIR/komodo-periphery.env <<'EOF'"
   echo "       PERIPHERY_PASSKEYS=<same-passkey>"
   echo "       PERIPHERY_ALLOWED_IPS=komodo-core"
   echo "       EOF"
