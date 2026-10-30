@@ -86,7 +86,7 @@ services:
       - komodo
 
   komodo-db:
-    image: mongo:7
+    image: docker.io/mongo:7
     container_name: komodo-db
     restart: unless-stopped
     volumes:
