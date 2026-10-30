@@ -138,11 +138,14 @@ TimeoutStartSec=300
 WantedBy=default.target
 UNIT
 
-# Ensure XDG_RUNTIME_DIR is set — required for systemctl --user in non-login shells
+# Ensure XDG_RUNTIME_DIR and D-Bus are set for non-login shells (e.g. chezmoi)
 export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
+export DBUS_SESSION_BUS_ADDRESS="${DBUS_SESSION_BUS_ADDRESS:-unix:path=${XDG_RUNTIME_DIR}/bus}"
+
+# Enable linger first so the user systemd session is alive before we talk to it
+loginctl enable-linger "$(id -un)"
 
 systemctl --user daemon-reload
-loginctl enable-linger "$(id -un)"
 systemctl --user enable "$SERVICE_NAME"
 
 if $ENV_MISSING; then
