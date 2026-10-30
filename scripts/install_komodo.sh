@@ -79,6 +79,9 @@ services:
     container_name: komodo-periphery
     restart: unless-stopped
     env_file: $KOMODO_DIR/komodo-periphery.env
+    environment:
+      - DOCKER_HOST=unix:///run/podman/podman.sock
+      - PERIPHERY_SSL_ENABLED=false
     volumes:
       - /run/user/$CURRENT_UID/podman/podman.sock:/run/podman/podman.sock:ro
       - $KOMODO_DIR:$KOMODO_DIR:ro
