@@ -138,15 +138,16 @@ TimeoutStartSec=300
 WantedBy=default.target
 UNIT
 
-# Ensure XDG_RUNTIME_DIR and D-Bus are set for non-login shells (e.g. chezmoi)
-export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
-export DBUS_SESSION_BUS_ADDRESS="${DBUS_SESSION_BUS_ADDRESS:-unix:path=${XDG_RUNTIME_DIR}/bus}"
-
-# Enable linger first so the user systemd session is alive before we talk to it
 loginctl enable-linger "$(id -un)"
 
-systemctl --user daemon-reload
-systemctl --user enable "$SERVICE_NAME"
+# Create enable symlink directly — no D-Bus needed, works in non-login shells
+mkdir -p "$SERVICE_DIR/default.target.wants"
+ln -sf "$SERVICE_FILE" "$SERVICE_DIR/default.target.wants/$SERVICE_NAME.service"
+
+# Best-effort: reload systemd if user session is already running
+export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
+export DBUS_SESSION_BUS_ADDRESS="${DBUS_SESSION_BUS_ADDRESS:-unix:path=${XDG_RUNTIME_DIR}/bus}"
+timeout 5 systemctl --user daemon-reload 2>/dev/null || true
 
 if $ENV_MISSING; then
   echo ">>> Service installed but NOT started — env files are missing."
@@ -173,7 +174,8 @@ if $ENV_MISSING; then
   echo "       journalctl --user -u $SERVICE_NAME -f"
   echo ""
 else
-  systemctl --user start "$SERVICE_NAME"
+  timeout 30 systemctl --user start "$SERVICE_NAME" 2>/dev/null || \
+    podman compose -f "$COMPOSE_PATH" up -d --remove-orphans
   echo ""
   echo ">>> Komodo installed!"
   echo "    Status: systemctl --user status $SERVICE_NAME"
