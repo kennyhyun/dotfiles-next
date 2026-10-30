@@ -310,6 +310,9 @@ install_lite_extras() {
   rootfs_ensure_rw                 # unlock only now that we know we must write
   sudo apt-get install -y podman \
     || echo "Could not install podman via apt (is the package available?)."
+  # rootless podman containers run as systemd user services; linger keeps the
+  # user session alive at boot so those services start without a login.
+  loginctl enable-linger "$(id -un)" 2>/dev/null || true
 }
 
 # linuxdev extras need root (docker/microk8s touch system services).
