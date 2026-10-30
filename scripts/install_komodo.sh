@@ -138,6 +138,9 @@ TimeoutStartSec=300
 WantedBy=default.target
 UNIT
 
+# Ensure XDG_RUNTIME_DIR is set — required for systemctl --user in non-login shells
+export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
+
 systemctl --user daemon-reload
 loginctl enable-linger "$(id -un)"
 systemctl --user enable "$SERVICE_NAME"
