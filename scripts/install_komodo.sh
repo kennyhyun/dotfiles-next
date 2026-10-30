@@ -112,13 +112,25 @@ COMPOSE
 
 echo "    compose.yml -> $COMPOSE_PATH"
 
-# Warn about missing env files
+# Check for missing env files
+ENV_MISSING=false
 for f in komodo.env komodo-periphery.env; do
   if [ ! -f "$HOMELAB_DIR/$f" ]; then
-    echo "WARNING: $HOMELAB_DIR/$f not found — required before starting the service"
-    echo "         Example keys: KOMODO_HOST, KOMODO_PASSKEY / PERIPHERY_PASSKEYS"
+    echo "WARNING: $HOMELAB_DIR/$f not found"
+    ENV_MISSING=true
   fi
 done
+if $ENV_MISSING; then
+  echo ""
+  echo "    Create the missing env files before starting the service."
+  echo "    Minimal example for $HOMELAB_DIR/komodo.env:"
+  echo "      KOMODO_HOST=https://komodo.yeoyou.net"
+  echo "      KOMODO_PASSKEY=<strong-passkey>"
+  echo "    Minimal example for $HOMELAB_DIR/komodo-periphery.env:"
+  echo "      PERIPHERY_PASSKEYS=<same-passkey>"
+  echo "      PERIPHERY_ALLOWED_IPS=komodo-core"
+  echo ""
+fi
 
 # Fix podman socket path if UID != 1000
 CURRENT_UID="$(id -u)"
@@ -154,10 +166,17 @@ UNIT
 
 systemctl --user daemon-reload
 loginctl enable-linger "$(id -un)"
-systemctl --user enable --now "$SERVICE_NAME"
+systemctl --user enable "$SERVICE_NAME"
 
-echo ""
-echo ">>> Komodo installed!"
-echo "    Status: systemctl --user status $SERVICE_NAME"
-echo "    Logs:   journalctl --user -u $SERVICE_NAME -f"
-echo "    UI:     http://localhost:9120"
+if $ENV_MISSING; then
+  echo ">>> Service installed but NOT started (env files missing)."
+  echo "    After creating the env files, run:"
+  echo "      systemctl --user start $SERVICE_NAME"
+else
+  systemctl --user start "$SERVICE_NAME"
+  echo ""
+  echo ">>> Komodo installed!"
+  echo "    Status: systemctl --user status $SERVICE_NAME"
+  echo "    Logs:   journalctl --user -u $SERVICE_NAME -f"
+  echo "    UI:     http://localhost:9120"
+fi
