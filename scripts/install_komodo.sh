@@ -60,6 +60,29 @@ cat > "$COMPOSE_PATH" <<COMPOSE
 name: komodo
 
 services:
+  traefik:
+    image: traefik:v3
+    container_name: traefik
+    restart: unless-stopped
+    command:
+      - "--providers.docker=true"
+      - "--providers.docker.endpoint=unix:///run/podman/podman.sock"
+      - "--providers.docker.exposedbydefault=false"
+      - "--providers.docker.network=homelab"
+      - "--entrypoints.web.address=:80"
+      - "--entrypoints.websecure.address=:443"
+      - "--entrypoints.web.http.redirections.entrypoint.to=websecure"
+      - "--entrypoints.web.http.redirections.entrypoint.scheme=https"
+    environment:
+      - DOCKER_HOST=unix:///run/podman/podman.sock
+    volumes:
+      - /run/user/$CURRENT_UID/podman/podman.sock:/run/podman/podman.sock:ro
+    ports:
+      - "80:80"
+      - "443:443"
+    networks:
+      - homelab
+
   komodo-core:
     image: ghcr.io/moghtech/komodo-core:latest
     container_name: komodo-core
@@ -72,7 +95,8 @@ services:
     volumes:
       - komodo-data:/data
     networks:
-      - komodo
+      - homelab
+      - komodo-internal
 
   komodo-periphery:
     image: ghcr.io/moghtech/komodo-periphery:latest
@@ -86,7 +110,7 @@ services:
       - /run/user/$CURRENT_UID/podman/podman.sock:/run/podman/podman.sock:ro
       - $KOMODO_DIR:$KOMODO_DIR:ro
     networks:
-      - komodo
+      - komodo-internal
 
   komodo-db:
     image: docker.io/mongo:7
@@ -95,11 +119,14 @@ services:
     volumes:
       - komodo-db:/data/db
     networks:
-      - komodo
+      - komodo-internal
 
 networks:
-  komodo:
-    name: komodo
+  homelab:
+    name: homelab
+  komodo-internal:
+    name: komodo-internal
+    internal: true
 
 volumes:
   komodo-data:
@@ -122,7 +149,7 @@ export DBUS_SESSION_BUS_ADDRESS="${DBUS_SESSION_BUS_ADDRESS:-unix:path=${XDG_RUN
 timeout 5 systemctl --user enable --now podman.socket 2>/dev/null || true
 
 # ── komodo network ────────────────────────────────────────────────────────────
-podman network exists komodo 2>/dev/null || podman network create komodo
+podman network exists homelab 2>/dev/null || podman network create homelab
 
 # ── systemd user service ──────────────────────────────────────────────────────
 echo ">>> Installing systemd user service..."
