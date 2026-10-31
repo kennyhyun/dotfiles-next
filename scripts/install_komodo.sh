@@ -68,7 +68,7 @@ services:
       - "--providers.docker=true"
       - "--providers.docker.endpoint=unix:///run/podman/podman.sock"
       - "--providers.docker.exposedbydefault=false"
-      - "--providers.docker.network=homelab"
+      - "--providers.docker.network=ingress"
       - "--entrypoints.web.address=:80"
       - "--entrypoints.websecure.address=:443"
       - "--entrypoints.web.http.redirections.entrypoint.to=websecure"
@@ -81,7 +81,7 @@ services:
       - "80:80"
       - "443:443"
     networks:
-      - homelab
+      - ingress
 
   komodo-core:
     image: ghcr.io/moghtech/komodo-core:latest
@@ -95,7 +95,7 @@ services:
     volumes:
       - komodo-data:/data
     networks:
-      - homelab
+      - ingress
       - komodo-internal
 
   komodo-periphery:
@@ -122,8 +122,8 @@ services:
       - komodo-internal
 
 networks:
-  homelab:
-    name: homelab
+  ingress:
+    name: ingress
   komodo-internal:
     name: komodo-internal
     internal: true
@@ -149,7 +149,7 @@ export DBUS_SESSION_BUS_ADDRESS="${DBUS_SESSION_BUS_ADDRESS:-unix:path=${XDG_RUN
 timeout 5 systemctl --user enable --now podman.socket 2>/dev/null || true
 
 # ── komodo network ────────────────────────────────────────────────────────────
-podman network exists homelab 2>/dev/null || podman network create homelab
+podman network exists ingress 2>/dev/null || podman network create ingress
 
 # ── systemd user service ──────────────────────────────────────────────────────
 echo ">>> Installing systemd user service..."
