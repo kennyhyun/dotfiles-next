@@ -61,7 +61,7 @@ name: komodo
 
 services:
   traefik:
-    image: traefik:v3
+    image: docker.io/traefik:v3
     container_name: traefik
     restart: unless-stopped
     command:
