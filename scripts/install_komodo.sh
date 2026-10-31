@@ -69,8 +69,8 @@ services:
       - "--providers.docker.endpoint=unix:///run/podman/podman.sock"
       - "--providers.docker.exposedbydefault=false"
       - "--providers.docker.network=ingress"
-      - "--entrypoints.web.address=:80"
-      - "--entrypoints.websecure.address=:443"
+      - "--entrypoints.web.address=:8080"
+      - "--entrypoints.websecure.address=:8443"
       - "--entrypoints.web.http.redirections.entrypoint.to=websecure"
       - "--entrypoints.web.http.redirections.entrypoint.scheme=https"
     environment:
@@ -78,8 +78,8 @@ services:
     volumes:
       - /run/user/$CURRENT_UID/podman/podman.sock:/run/podman/podman.sock:ro
     ports:
-      - "80:80"
-      - "443:443"
+      - "8080:8080"
+      - "8443:8443"
     networks:
       - ingress
 
