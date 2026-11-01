@@ -128,6 +128,8 @@ SKIP_DEVTOOLS=""
 LITE=""
 [ "$ROLE" = "lite" ] && { LITE=1; SKIP_DEVTOOLS=1; }
 
+SDIR="{{ .chezmoi.sourceDir }}/scripts"
+
 log() { printf '\n\033[1;34m==> %s\033[0m\n' "$*"; }
 
 OS="$(uname -s)"
@@ -200,66 +202,11 @@ ensure_brew() {
   done
 }
 
-# System packages (Linux, apt) — only when we have root. On macOS the C
-# toolchain comes from Xcode CLT; everything else comes from brew.
+# System packages — macOS uses Xcode CLT; Linux is handled by the distro
+# helper sourced below (linux-debian.sh or linux-rhel.sh).
 install_system_packages() {
-  if [ "$OS" = "Darwin" ]; then
-    xcode-select -p >/dev/null 2>&1 || xcode-select --install || true
-    return 0
-  fi
-  if ! have_sudo; then
-    log "No sudo (or NO_SUDO set): skipping apt packages."
-    echo "  Make sure a C compiler + headers exist for treesitter, e.g.:"
-    echo "    sudo apt-get install build-essential"
-    echo "  Otherwise brew's gcc is used, which still needs system libc headers."
-    return 0
-  fi
-  local distro perf_pkg
-  distro="$(grep '^ID=' /etc/os-release | cut -d= -f2 | tr -d '"')"
-  if [ "$distro" = "ubuntu" ]; then perf_pkg="linux-tools-common"; else perf_pkg="linux-perf"; fi
-
-  # Base apt list. Always-needed essentials that are cheap on disk.
-  local want missing=""
-  local pkgs="
-    apt-transport-https ca-certificates
-    git git-lfs
-    htop
-    jq curl
-    net-tools psmisc whois
-  "
-  # Heavy / developer packages: skipped on the "lite" server role.
-  #   build-essential : C compiler + libc headers (treesitter, source builds)
-  #   default-jre      : a whole JRE, ~100-200MB
-  #   perf tools       : kernel perf counters
-  #   python/pipx      : local python tooling
-  #   xclip / lshw     : desktop clipboard / hardware probe, rarely useful on a
-  #                      headless server
-  if [ -z "$LITE" ]; then
-    pkgs="$pkgs
-      build-essential
-      $perf_pkg
-      python3-pip python3-venv pipx
-      default-jre
-      xclip
-      lshw
-    "
-  fi
-
-  for want in $pkgs; do
-    # Keep only packages that are not already installed.
-    dpkg -s "$want" >/dev/null 2>&1 || missing="$missing $want"
-  done
-
-  if [ -z "$missing" ]; then
-    log "All apt packages already installed; skipping (no rootfs unlock needed)."
-    return 0
-  fi
-
-  log "Installing missing apt packages:$missing"
-  rootfs_ensure_rw                 # unlock only now that we know we must write
-  sudo apt-get update
-  # shellcheck disable=SC2086  # intentional word-splitting of the package list
-  sudo apt-get install -y $missing
+  [ "$OS" = "Darwin" ] || return 0
+  xcode-select -p >/dev/null 2>&1 || xcode-select --install || true
 }
 
 # Everything else via brew (no root needed once brew exists).
@@ -292,25 +239,8 @@ install_brew_packages() {
   fi
 }
 
-# lite role: podman instead of docker. podman is daemonless + rootless, so it
-# is a better fit for a low-footprint server than the docker daemon. Installed
-# from apt (official packages on current Debian/Ubuntu).
-install_lite_extras() {
-  [ "$OS" != "Linux" ] && return 0
-  [ -n "$LITE" ] || return 0
-  if ! have_sudo; then
-    log "lite role requested but no sudo: skipping podman (install it later)."
-    return 0
-  fi
-  if command -v podman >/dev/null 2>&1; then
-    log "podman already installed ($(podman --version 2>/dev/null)); skipping."
-    return 0
-  fi
-  log "lite role: installing podman"
-  rootfs_ensure_rw                 # unlock only now that we know we must write
-  sudo apt-get install -y podman \
-    || echo "Could not install podman via apt (is the package available?)."
-}
+# lite role extras (podman) — implemented by the distro helper sourced below.
+install_lite_extras() { return 0; }
 
 # linuxdev extras need root (docker/microk8s touch system services).
 install_role_extras() {
@@ -328,11 +258,10 @@ install_role_extras() {
   #   microk8s : heavy (snap, hundreds of MB). OPT-IN only — set WITH_MICROK8S=1
   #              to install it. Kept out of the default linuxdev set so a dev box
   #              does not pay the k8s cost unless it asks for it.
-  local sdir="{{ .chezmoi.sourceDir }}/scripts"
   local need_docker="" need_microk8s=""
-  [ -x "$sdir/install_docker.sh" ]   && ! docker version        >/dev/null 2>&1 && need_docker=1
+  [ -x "$SDIR/install_docker.sh" ]   && ! docker version        >/dev/null 2>&1 && need_docker=1
   if [ -n "${WITH_MICROK8S:-}" ]; then
-    [ -x "$sdir/install_microk8s.sh" ] && [ -z "$(snap microk8s --version 2>/dev/null)" ] && need_microk8s=1
+    [ -x "$SDIR/install_microk8s.sh" ] && [ -z "$(snap microk8s --version 2>/dev/null)" ] && need_microk8s=1
   fi
 
   if [ -z "$need_docker" ] && [ -z "$need_microk8s" ]; then
@@ -342,8 +271,8 @@ install_role_extras() {
 
   log "linuxdev role: installing${need_docker:+ docker}${need_microk8s:+ microk8s}"
   rootfs_ensure_rw                 # unlock only now that we know we must write
-  [ -n "$need_microk8s" ] && "$sdir/install_microk8s.sh" || true
-  [ -n "$need_docker" ]   && "$sdir/install_docker.sh" || true
+  [ -n "$need_microk8s" ] && "$SDIR/install_microk8s.sh" || true
+  [ -n "$need_docker" ]   && "$SDIR/install_docker.sh" || true
 }
 
 # Tailscale (mesh VPN), all machines. CLI and daemon ship as one package.
@@ -372,8 +301,7 @@ install_tailscale() {
   fi
   log "Installing tailscale (systemd service)"
   rootfs_ensure_rw                 # unlock only now that we know we must write
-  local sdir="{{ .chezmoi.sourceDir }}/scripts"
-  [ -x "$sdir/install_tailscale.sh" ] && "$sdir/install_tailscale.sh" || true
+  [ -x "$SDIR/install_tailscale.sh" ] && "$SDIR/install_tailscale.sh" || true
 }
 
 # ZFS (zfsutils-linux). OPT-IN via WITH_ZFS=1. On Debian it pulls in zfs-dkms,
@@ -384,7 +312,6 @@ install_tailscale() {
 install_zfs() {
   [ -n "${WITH_ZFS:-}" ] || return 0
   [ "$OS" = "Linux" ] || return 0
-  local sdir="{{ .chezmoi.sourceDir }}/scripts"
   if ! command -v zpool >/dev/null 2>&1; then
     if ! have_sudo; then
       log "WITH_ZFS=1 but no sudo: skipping zfsutils-linux."
@@ -396,9 +323,9 @@ install_zfs() {
     sudo apt-get install -y zfsutils-linux \
       || echo "Could not install zfsutils-linux (on Debian, is 'contrib' enabled in apt sources?)."
   fi
-  if [ -x "$sdir/zfs_check.sh" ]; then
+  if [ -x "$SDIR/zfs_check.sh" ]; then
     log "Checking that the ZFS kernel module can load"
-    "$sdir/zfs_check.sh" || echo "  (ZFS needs the step above before 'zpool import' works.)"
+    "$SDIR/zfs_check.sh" || echo "  (ZFS needs the step above before 'zpool import' works.)"
   fi
 }
 
@@ -410,7 +337,6 @@ install_zfs() {
 #                     monitoring (the interface to watch is host-specific).
 install_security_tools() {
   [ "$OS" = "Linux" ] || return 0
-  local sdir="{{ .chezmoi.sourceDir }}/scripts"
   local need_clamav="" need_trivy="" need_suricata=""
   [ -n "${WITH_CLAMAV:-}" ]   && ! command -v clamscan >/dev/null 2>&1 && need_clamav=1
   [ -n "${WITH_TRIVY:-}" ]    && ! command -v trivy    >/dev/null 2>&1 && need_trivy=1
@@ -426,44 +352,33 @@ install_security_tools() {
 
   log "installing security tools:${need_clamav:+ clamav}${need_trivy:+ trivy}${need_suricata:+ suricata}"
   rootfs_ensure_rw                 # unlock only now that we know we must write
-  [ -n "$need_clamav" ]   && [ -x "$sdir/install_clamav.sh" ]   && "$sdir/install_clamav.sh"   || true
-  [ -n "$need_trivy" ]    && [ -x "$sdir/install_trivy.sh" ]    && "$sdir/install_trivy.sh"    || true
-  [ -n "$need_suricata" ] && [ -x "$sdir/install_suricata.sh" ] && "$sdir/install_suricata.sh" || true
+  [ -n "$need_clamav" ]   && [ -x "$SDIR/install_clamav.sh" ]   && "$SDIR/install_clamav.sh"   || true
+  [ -n "$need_trivy" ]    && [ -x "$SDIR/install_trivy.sh" ]    && "$SDIR/install_trivy.sh"    || true
+  [ -n "$need_suricata" ] && [ -x "$SDIR/install_suricata.sh" ] && "$SDIR/install_suricata.sh" || true
 }
 
-# NAS share stack. All OPT-IN (WITH_NAS umbrella, or the individual switches)
-# and never installed by default on any role. Each sub-script is idempotent and
-# installs the service only -- it defines NO shares/exports, because a share
-# path is host-specific (usually a ZFS dataset). Manage shares afterwards from
-# the Cockpit File Sharing web UI, or by hand in smb.conf / /etc/exports.
-#   WITH_COCKPIT=1 : light web admin UI + cockpit-file-sharing (share manager).
-#   WITH_SAMBA=1   : SMB/CIFS server for mixed Windows/macOS/Linux clients.
-#   WITH_NFS=1     : NFS kernel server for Linux/Unix-native clients.
-install_nas() {
-  [ "$OS" = "Linux" ] || return 0
-  local sdir="{{ .chezmoi.sourceDir }}/scripts"
-  local need_cockpit="" need_samba="" need_nfs=""
-  [ -n "${WITH_COCKPIT:-}" ] && ! command -v cockpit-bridge >/dev/null 2>&1 && need_cockpit=1
-  [ -n "${WITH_SAMBA:-}" ]   && ! command -v smbd           >/dev/null 2>&1 && need_samba=1
-  [ -n "${WITH_NFS:-}" ]     && ! dpkg -s nfs-kernel-server  >/dev/null 2>&1 && need_nfs=1
+# NAS share stack (cockpit/samba/nfs) — implemented by the distro helper sourced below.
+install_nas() { return 0; }
 
-  if [ -z "$need_cockpit" ] && [ -z "$need_samba" ] && [ -z "$need_nfs" ]; then
-    return 0
-  fi
-  if ! have_sudo; then
-    log "NAS stack requested but no sudo: skipping cockpit/samba/nfs."
-    return 0
-  fi
-
-  log "installing NAS stack:${need_cockpit:+ cockpit}${need_samba:+ samba}${need_nfs:+ nfs}"
-  rootfs_ensure_rw                 # unlock only now that we know we must write
-  # Samba first: install_cockpit.sh adds `include = registry` to smb.conf when
-  # cockpit-file-sharing lands, so smb.conf should already exist by then. (The
-  # cockpit script also handles the reverse order defensively.)
-  [ -n "$need_samba" ]   && [ -x "$sdir/install_samba.sh" ]   && "$sdir/install_samba.sh"   || true
-  [ -n "$need_cockpit" ] && [ -x "$sdir/install_cockpit.sh" ] && "$sdir/install_cockpit.sh" || true
-  [ -n "$need_nfs" ]     && [ -x "$sdir/install_nfs.sh" ]     && "$sdir/install_nfs.sh"     || true
-}
+# Source distro-specific helpers on Linux. They override install_system_packages,
+# install_lite_extras, and install_nas with the correct package manager (apt or dnf).
+if [ "$OS" = "Linux" ] && [ -f /etc/os-release ]; then
+  _distro_id="$(grep '^ID=' /etc/os-release | cut -d= -f2 | tr -d '"')"
+  _distro_like="$(grep '^ID_LIKE=' /etc/os-release | cut -d= -f2 | tr -d '"')"
+  case "$_distro_id $_distro_like" in
+    *rhel*|*fedora*|*centos*|*oracle*|*sles*)
+      # shellcheck disable=SC1091
+      [ -f "$SDIR/linux-rhel.sh" ] && . "$SDIR/linux-rhel.sh" \
+        || log "WARNING: linux-rhel.sh not found in $SDIR"
+      ;;
+    *)
+      # shellcheck disable=SC1091
+      [ -f "$SDIR/linux-debian.sh" ] && . "$SDIR/linux-debian.sh" \
+        || log "WARNING: linux-debian.sh not found in $SDIR"
+      ;;
+  esac
+  unset _distro_id _distro_like
+fi
 
 # macOS container runtime. OrbStack is a native lightweight VM that is a drop-in
 # Docker Desktop replacement. Free for personal use, paid for commercial.
@@ -507,23 +422,20 @@ set_nvim_profile() {
 # installer URL in KIROCREW_INSTALL_URL (it does not hard-code one).
 install_kirocrew() {
   [ -n "${WITH_KIROCREW:-}" ] || return 0
-  local sdir="{{ .chezmoi.sourceDir }}/scripts"
-  if [ -x "$sdir/install_kirocrew.sh" ]; then
+  if [ -x "$SDIR/install_kirocrew.sh" ]; then
     log "WITH_KIROCREW=1: installing Kiro Crew"
-    "$sdir/install_kirocrew.sh" || echo "kiro crew install reported an issue (see output above)."
+    "$SDIR/install_kirocrew.sh" || echo "kiro crew install reported an issue (see output above)."
   fi
 }
 
 # Komodo (container management platform). OPT-IN via WITH_KOMODO=1.
 # Runs as a rootless podman + systemd user service. Linux only.
-# Requires /etc/homelab/komodo/compose.yml to exist before running.
 install_komodo() {
   [ -n "${WITH_KOMODO:-}" ] || return 0
   [ "$OS" = "Linux" ] || return 0
-  local sdir="{{ .chezmoi.sourceDir }}/scripts"
-  if [ -x "$sdir/install_komodo.sh" ]; then
+  if [ -x "$SDIR/install_komodo.sh" ]; then
     log "WITH_KOMODO=1: installing Komodo"
-    "$sdir/install_komodo.sh" || echo "Komodo install reported an issue (see output above)."
+    "$SDIR/install_komodo.sh" || echo "Komodo install reported an issue (see output above)."
   fi
 }
 
