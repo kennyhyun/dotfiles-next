@@ -8,6 +8,7 @@
 #        DOTFILES_WITH_COCKPIT / _SAMBA / _NFS
 #        DOTFILES_WITH_NAS       (umbrella: cockpit + samba + nfs)
 #        DOTFILES_WITH_ORBSTACK  (macOS container runtime)
+#        DOTFILES_WITH_TAILSCALE_EXIT (Linux: tailscale exit node + IP forwarding)
 # The old unprefixed names (PRODUCTION, NO_SUDO, WITH_*) are still read, with a
 # deprecation warning. After this block the script sees ROLE and PRODUCTION /
 # NO_SUDO / WITH_* as plain variables, empty when off and "1" when on.
@@ -72,4 +73,5 @@ if [ -n "$WITH_NAS" ]; then
   WITH_COCKPIT=1; WITH_SAMBA=1; WITH_NFS=1
 fi
 WITH_ORBSTACK="$(_dotfiles_bool "$(_dotfiles_get WITH_ORBSTACK '' '{{ get . "with_orbstack" }}')")"
+WITH_TAILSCALE_EXIT="$(_dotfiles_bool "$(_dotfiles_get WITH_TAILSCALE_EXIT '' '{{ get . "with_tailscale_exit" }}')")"
 ACCEPT_CHANGE="$(_dotfiles_bool "${DOTFILES_ACCEPT_CHANGE:-}")"

@@ -1,0 +1,17 @@
+#!/bin/sh
+# Re-runs when the exit-node switch or install_tailscale.sh changes.
+# with_tailscale_exit: {{ get . "with_tailscale_exit" | default false }}
+# install_tailscale.sh sha256: {{ include "scripts/install_tailscale.sh" | sha256sum }}
+
+{{ template "settings.sh" . }}
+
+SDIR="{{ .chezmoi.sourceDir }}/scripts"
+
+[ -n "$WITH_TAILSCALE_EXIT" ] || exit 0
+
+if ! command -v tailscale >/dev/null 2>&1; then
+  echo "tailscale not installed; skipping exit-node setup."
+  exit 0
+fi
+
+TAILSCALE_EXIT_NODE=1 "$SDIR/install_tailscale.sh"
