@@ -46,7 +46,7 @@ install_system_packages() {
 
   log "Installing missing apt packages:$missing"
   rootfs_ensure_rw
-  sudo apt-get update
+  sudo apt-get update || true
   # shellcheck disable=SC2086
   sudo apt-get install -y $missing
 }
