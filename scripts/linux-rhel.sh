@@ -46,9 +46,12 @@ install_system_packages() {
   if [ -f /etc/yum.repos.d/oracle-epel-ol9.repo ]; then
     sudo dnf config-manager --set-enabled ol9_developer_EPEL
   fi
-  # Install one at a time to limit peak memory usage on small VMs.
+  # microdnf uses ~3x less memory than dnf — preferred on small VMs.
+  # Falls back to dnf if microdnf is not available.
+  _dnf_cmd="dnf"
+  command -v microdnf >/dev/null 2>&1 && _dnf_cmd="microdnf"
   for _pkg in $missing; do
-    sudo dnf install -y "$_pkg"
+    sudo "$_dnf_cmd" install -y "$_pkg"
   done
 }
 
@@ -65,7 +68,8 @@ install_lite_extras() {
   fi
   log "lite role: installing podman"
   rootfs_ensure_rw
-  sudo dnf install -y podman \
+  _dnf_cmd="dnf"; command -v microdnf >/dev/null 2>&1 && _dnf_cmd="microdnf"
+  sudo "$_dnf_cmd" install -y podman \
     || echo "Could not install podman via dnf (is the package available?)."
 }
 
