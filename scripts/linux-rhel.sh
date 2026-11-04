@@ -43,6 +43,9 @@ install_system_packages() {
 
   log "Installing missing dnf packages:$missing"
   rootfs_ensure_rw
+  if [ -f /etc/yum.repos.d/oracle-epel-ol9.repo ]; then
+    sudo dnf config-manager --set-enabled ol9_developer_EPEL
+  fi
   # shellcheck disable=SC2086
   sudo dnf install -y $missing
 }
