@@ -363,8 +363,8 @@ install_nas() { return 0; }
 # Source distro-specific helpers on Linux. They override install_system_packages,
 # install_lite_extras, and install_nas with the correct package manager (apt or dnf).
 if [ "$OS" = "Linux" ] && [ -f /etc/os-release ]; then
-  _distro_id="$(grep '^ID=' /etc/os-release | cut -d= -f2 | tr -d '"')"
-  _distro_like="$(grep '^ID_LIKE=' /etc/os-release | cut -d= -f2 | tr -d '"')"
+  _distro_id="$(grep '^ID=' /etc/os-release | cut -d= -f2 | tr -d '"' || true)"
+  _distro_like="$(grep '^ID_LIKE=' /etc/os-release | cut -d= -f2 | tr -d '"' || true)"
   case "$_distro_id $_distro_like" in
     *rhel*|*fedora*|*centos*|*oracle*|*sles*)
       # shellcheck disable=SC1091
