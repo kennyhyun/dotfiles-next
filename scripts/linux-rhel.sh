@@ -46,8 +46,10 @@ install_system_packages() {
   if [ -f /etc/yum.repos.d/oracle-epel-ol9.repo ]; then
     sudo dnf config-manager --set-enabled ol9_developer_EPEL
   fi
-  # shellcheck disable=SC2086
-  sudo dnf install -y $missing
+  # Install one at a time to limit peak memory usage on small VMs.
+  for _pkg in $missing; do
+    sudo dnf install -y "$_pkg"
+  done
 }
 
 install_lite_extras() {
