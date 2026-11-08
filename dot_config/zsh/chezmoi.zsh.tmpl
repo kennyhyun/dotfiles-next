@@ -138,3 +138,10 @@ setopt HIST_IGNORE_DUPS      # do not record a command identical to the previous
 setopt HIST_IGNORE_SPACE     # a command starting with a space is not recorded
 setopt HIST_REDUCE_BLANKS    # trim superfluous whitespace before recording
 setopt EXTENDED_HISTORY      # record start timestamp and elapsed time
+
+{{- if .with_kirocrew }}
+# ---- kirocrew: start the gateway supervisor if it is not already running ----
+if [ -x "$HOME/bin/kirocrew-supervise.sh" ] && ! pgrep -f kirocrew-supervise.sh >/dev/null; then
+  setsid -f "$HOME/bin/kirocrew-supervise.sh" </dev/null >/dev/null 2>&1
+fi
+{{- end }}
