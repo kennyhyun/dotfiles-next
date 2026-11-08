@@ -33,6 +33,9 @@ esac
 # Keep JSON output in the terminal instead of opening less.
 export AWS_PAGER=""
 
+# ---- OpenTofu: share one provider cache across stacks (saves disk per stack) ----
+export TF_PLUGIN_CACHE_DIR="$HOME/.cache/opentofu/plugins"
+
 # ---- Editor ----
 export VISUAL=nvim
 export EDITOR="$VISUAL"
