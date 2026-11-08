@@ -9,7 +9,9 @@
 # What this does NOT do automatically (both are interactive / privileged — run
 # them yourself after install):
 #   - sign-in:        kiro-cli login      (Crew drives the LLM through kiro-cli)
-#   - run as service: kirocrew service install   (sudo; starts on boot)
+#   - keep-alive: installed here as ~/bin/kirocrew-supervise.sh (no systemd).
+#     It restarts the gateway after any exit. Start it per the hints printed
+#     at the end of this script.
 #
 # Env:
 #   KIROCREW_INSTALL_URL  The official one-line installer URL. REQUIRED on a
@@ -28,12 +30,37 @@ set -eu
 
 log() { printf '\n\033[1;34m==> %s\033[0m\n' "$*"; }
 
+# ---- keep-alive supervisor: copy scripts/kirocrew-supervise.sh to ~/bin ----
+# Runs before the early exit below, so it also updates an existing install.
+# No systemd unit is created; the supervisor restarts the gateway on exit.
+install_supervisor() {
+  src="$(cd "$(dirname "$0")" && pwd)/kirocrew-supervise.sh"
+  dst="$HOME/bin/kirocrew-supervise.sh"
+  if [ ! -f "$src" ]; then
+    echo "Missing supervisor script: $src" >&2
+    return 1
+  fi
+  mkdir -p "$HOME/bin"
+  if ! cmp -s "$src" "$dst" 2>/dev/null; then
+    install -m 0755 "$src" "$dst"
+    log "Installed supervisor: $dst"
+  fi
+}
+install_supervisor
+
+start_hint() {
+  echo "  Start in background:  setsid -f \"\$HOME/bin/kirocrew-supervise.sh\" </dev/null >/dev/null 2>&1"
+  echo "  Log file:             \$HOME/.local/state/kirocrew/gateway.log"
+  echo "  Optional autostart: add to ~/.zshrc a line that starts the supervisor when pgrep finds nothing."
+}
+
 # ---- already installed? (idempotent short-circuit) ----
 if command -v kirocrew >/dev/null 2>&1; then
   ver="$(kirocrew --version 2>/dev/null || echo '?')"
   log "kirocrew already installed ($ver); skipping install."
   echo "  Update later with:  kirocrew update"
   echo "  Verify wiring with: kirocrew doctor"
+  start_hint
   exit 0
 fi
 
@@ -94,4 +121,4 @@ echo "  1. kiro-cli login            # sign in the LLM backend (if not already)"
 echo "  2. $KC setup                 # interactive wizard: data dir, agent, creds"
 echo "  3. $KC doctor                # verify everything is wired up"
 echo "  4. $KC gateway               # start the server -> http://localhost:5476"
-echo "  (Run 24/7 on boot: '$KC service install' — uses sudo on Linux.)"
+start_hint
