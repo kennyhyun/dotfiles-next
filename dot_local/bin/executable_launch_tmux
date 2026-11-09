@@ -159,6 +159,14 @@ apply_styles() {
   [ -n "${STATUSBAR:-}" ]        && tmux set-option -t "$SESSION" status-style                "$(style_str "$STATUSBAR")"
   [ -n "${WINDOW_CURRENT:-}" ]   && tmux set-option -t "$SESSION" window-status-current-style  "$(style_str "$WINDOW_CURRENT")"
   [ -n "${WINDOW_INACTIVE:-}" ]  && tmux set-option -t "$SESSION" window-status-style           "$(style_str "$WINDOW_INACTIVE")"
+
+  # Show each window's current directory (instead of its preset name) in the tab list.
+  # Window options must be set per window; a session target only changes the active window.
+  local idx
+  for idx in $(tmux list-windows -t "$SESSION" -F '#{window_index}'); do
+    tmux set-option -w -t "$SESSION:$idx" window-status-format         " #I:#{b:pane_current_path} "
+    tmux set-option -w -t "$SESSION:$idx" window-status-current-format " #I:#{b:pane_current_path} "
+  done
   return 0
 }
 
