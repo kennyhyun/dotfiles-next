@@ -139,6 +139,10 @@ resolve_dir() {
   local dir
   dir=$(eval echo "$1")
   [ -d "$dir" ] || dir="$HOME"
+  # Normalise the path (drops a trailing '/', resolves '.' and '..'). tmux exports
+  # the -c path as $PWD verbatim, and zsh shows an empty %1~ at the prompt when
+  # $PWD ends in '/' until the first cd.
+  dir=$(cd "$dir" && pwd)
   printf '%s' "$dir"
 }
 
