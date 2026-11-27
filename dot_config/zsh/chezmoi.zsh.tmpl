@@ -47,6 +47,16 @@ export EDITOR="$VISUAL"
 alias vi=nvim
 alias vim=nvim
 
+# ---- Aliases (carried over from the old ~/.zshrc) ----
+alias d="docker"
+alias dm="docker-machine"
+alias dc="docker compose"
+# dp: docker ps with name, ports, status, image. The "{{ "{{" }}" pieces are escaped for chezmoi.
+alias dp="docker ps --format '{{ "{{" }}.Names}}\t{{ "{{" }}.Ports}}\t{{ "{{" }}.Status}}\t{{ "{{" }}.Image}}'"
+alias kc="kubectl"
+alias gwgrep='grep --color=auto --exclude-dir=.git --exclude-dir=node_modules --exclude-dir=docker_node_modules_cache'
+alias gg="gwgrep"
+
 # ---- Node via fnm (Fast Node Manager) ----
 if command -v fnm >/dev/null 2>&1; then
   eval "$(fnm env --use-on-cd --shell zsh)"
